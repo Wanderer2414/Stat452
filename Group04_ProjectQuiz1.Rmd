@@ -1,7 +1,10 @@
 ---
 title: "ASESII 24A02 Project-Based Quiz 1"
 subtitle: "Ridge, Lasso, and Regularization for Neural Features"
-author: "Group XX: [names and student IDs]"
+author: |
+  | Group 04
+  | Nguyen Thi Yen Nhi (24125071), Nguyen Khang Thinh (24125104)
+  | Nguyen Van Tinh (24125106), Nguyen Le Quoc Huy (24125100)
 date: "`r format(Sys.Date(), '%Y-%m-%d')`"
 output:
   pdf_document:
@@ -18,6 +21,10 @@ params:
   group_number: 04
 fontsize: 11pt
 geometry: margin=1in
+header-includes:
+  - \usepackage{fvextra}
+  - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\}}
+  - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
 ---
 
 <!--
@@ -26,6 +33,7 @@ GroupXX_ProjectQuiz1.Rmd, place references.bib beside it, and set the group
 number parameter before rendering. Remove instructional comments from the
 final report.
 -->
+
 
 # Authorship and contribution statement {-}
 
@@ -59,7 +67,10 @@ library(glmnet)
 library(broom)
 library(knitr)
 
-group_number <- as.integer(params$group_number)
+# `params` exists only while knitting; the fallback
+# keeps interactive chunk runs working.
+has_params <- exists("params") && !is.null(params$group_number)
+group_number <- if (has_params) as.integer(params$group_number) else 4L
 if (length(group_number) != 1L || is.na(group_number) || group_number < 1L) {
   stop("Set params$group_number to your assigned positive group number.")
 }
@@ -174,7 +185,11 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
 
 ## 1A. Target and predictors
 
-```{r data-configuration, eval=FALSE}
+<!--
+chunk này sinh ra seeds$split = 240204, seeds$cv = 240304, seeds$features = 240404
+-->
+
+```{r data-configuration}
 config <- list(
   file = "prostate.csv",
   response = "lpsa",
@@ -190,7 +205,133 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 }
 ```
 
+```{r data-overview}
+meaning <- c(
+  lcavol  = "Log cancer volume",
+  lweight = "Log prostate weight",
+  age     = "Age at diagnosis",
+  lbph    = "Log BPH amount",
+  svi     = "Seminal vesicle invasion",
+  lcp     = "Log capsular penetration",
+  gleason = "Gleason score",
+  pgg45   = "Percent Gleason grade 4/5",
+  lpsa    = "Log prostate-specific antigen"
+)
+unit <- c(
+  lcavol = "log cm3", lweight = "log g",   age   = "years",
+  lbph   = "log cm2", svi     = "0/1",     lcp   = "log cm",
+  gleason = "6 to 9", pgg45   = "percent", lpsa  = "log ng/mL"
+)
+
+data_overview <- tibble(
+  Variable = names(data_raw),
+  Role     = ifelse(names(data_raw) == config$response, "Response", "Predictor"),
+  Meaning  = unname(meaning[names(data_raw)]),
+  Unit     = unname(unit[names(data_raw)]),
+  Type     = vapply(data_raw, function(x) class(x)[1L], character(1)),
+  Distinct = vapply(data_raw, dplyr::n_distinct, integer(1), na.rm = TRUE),
+  Missing  = vapply(data_raw, function(x) sum(is.na(x)), integer(1))
+)
+
+kable(
+  data_overview,
+  caption = paste("Response and candidate predictors, with the integrity checks",
+                  "run before the split.")
+)
+
+n_duplicate_rows <- sum(duplicated(analysis_data))
+```
+
+```{r data-configuration-duplicate, eval=FALSE, include=FALSE}
+#
+data_raw <- read.csv(find_exam_data(config$file), check.names = FALSE)
+predictors <- setdiff(names(data_raw), config$excluded)
+analysis_data <- data_raw[, c(config$response, predictors), drop = FALSE]
+
+if (anyNA(analysis_data)) stop("Declare a training-only missing-value plan.")
+if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
+  stop("The assigned response and predictors must be numeric.")
+}
+```
+
 *Define the prediction task and justify every exclusion.*
+
+**Reading the table.** The file holds `r nrow(data_raw)` patients and
+`r ncol(data_raw)` columns: one response and `r length(predictors)` candidate
+predictors. Three integrity results clear the way for the split. Every column is
+numeric, so the design matrix needs no factor encoding and the template's type
+guard passes. No cell is missing (`Missing` is zero throughout), so no imputation
+is performed; the missing-value rule is still declared in 1B as a contingency,
+because a rule invented after seeing the data would be a decision made with
+holdout information. And `r n_duplicate_rows` rows are duplicated, so no patient
+is silently counted twice, which would otherwise inflate the apparent sample size
+and let the same record fall on both sides of the split.
+
+(`BPH` in the table abbreviates benign prostatic hyperplasia, the non-cancerous
+prostate enlargement recorded by `lbph`.)
+
+The `Distinct` column carries the one substantive surprise. Two predictors are
+numeric but not continuous: `svi` takes only 2 values (it is a binary indicator of
+seminal vesicle invasion) and `gleason` takes only 4 (an ordinal biopsy score from
+6 to 9). We keep both on their numeric scale, which is the standard `glmnet`
+convention, but their coefficients must later be read with that discreteness in
+mind rather than as smooth slopes. The `Unit` column exposes the second issue: the
+predictors live on wildly different scales, from `pgg45` measured in percent (0 to
+100) to several variables already on a log scale. Penalized regression shrinks
+coefficients toward zero, so a predictor measured in large units would be punished
+merely for its units. This is precisely why the design matrix is standardized in
+1B, using constants computed on the training rows only.
+
+**Assignment.** Group 04 is even-numbered, so the assigned dataset is
+`prostate.csv` and the assigned response is `lpsa`.
+
+**Response.** `lpsa` is the natural logarithm of prostate-specific antigen
+(ng/mL), a continuous serum marker measured before surgery. It is modelled on
+the log scale, so every coefficient is read as a change in log PSA per one
+standard deviation of a standardized predictor.
+
+**Unit of observation and study population.** One row is one male patient
+with clinically localized prostate cancer who underwent radical prostatectomy
+in the study of @stamey1989. The analysis file contains 97
+complete patients. Any conclusion therefore generalizes only to comparable
+prostatectomy candidates, not to unscreened men in the general population.
+
+**Prediction objective.** Predict pre-operative `lpsa` from routinely
+available clinical and biopsy measurements, and compare how OLS, ridge, and
+lasso trade prediction error against coefficient stability and interpretability
+when several predictors are correlated.
+
+**Candidate predictors.** All eight remaining variables are retained:
+`lcavol`, `lweight`, `age`, `lbph`, `svi`, `lcp`, `gleason`, and `pgg45`
+(see the data dictionary). All are numeric, so the template's type guard passes.
+Two deserve comment: `svi` is binary (0/1) and `gleason` is an ordinal score
+taking values 6-9. We keep both on their numeric scale, which is the standard
+`glmnet` convention; standardizing them makes their coefficients comparable in
+magnitude to the continuous predictors, at the cost of interpreting a "one
+standard deviation" change in a binary variable.
+
+**Exclusions.** The project brief requires only that `lpsa` itself be removed
+from the predictor set, and permits a further exclusion only when a statistical
+reason is documented. We document none, so exactly one variable is excluded: the
+response. No candidate predictor is computed from `lpsa`: all eight are
+measurements taken before surgery (tumour volume, prostate weight, age, benign
+hyperplasia, seminal vesicle invasion, capsular penetration, and the two Gleason
+summaries), and none uses PSA information in its definition.
+
+**Why an outcome-derived predictor would invalidate the comparison.** A variable
+computed from the response carries the answer inside the design matrix. Its
+least-squares coefficient would absorb nearly all explained variance, the
+training and cross-validation errors of every method would collapse toward zero,
+and the resulting model would fail on any new patient whose PSA is not yet known
+-- which is precisely the deployment situation. The comparison itself would also
+become meaningless: OLS, ridge, and lasso would all be fitting the same leaked
+signal, so differences between them would reflect how each penalty shrinks that
+one dominant column rather than how each method handles genuine multicollinearity
+among clinical predictors. The parallel assignment makes the point concrete: for
+`fat.csv` the brief excludes `siri`, `density`, and `free` because they are
+alternative body-fat calculations. `prostate.csv` has no such variable, which is
+why no additional exclusion is warranted here.
+
 
 ## 1B. Split and train-only preprocessing
 
