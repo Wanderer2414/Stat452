@@ -45,7 +45,7 @@ We confirm that every group member can explain the submitted analysis. AI use is
 # Reproducible setup {-}
 
 ```{r setup, message=FALSE, warning=FALSE}
-required_packages <- c("tidyverse", "glmnet", "broom", "knitr")
+required_packages <- c("tidyverse", "glmnet", "broom", "knitr", "car")
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
 ]
@@ -58,6 +58,7 @@ library(tidyverse)
 library(glmnet)
 library(broom)
 library(knitr)
+library(car)
 
 group_number <- as.integer(params$group_number)
 if (length(group_number) != 1L || is.na(group_number) || group_number < 1L) {
@@ -209,6 +210,7 @@ y_train <- y_raw[train_id]
 y_test <- y_raw[test_id]
 
 foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
+sum(is.na(analysis_data))
 ```
 
 *Report seeds, dimensions, scaling, folds, and leakage safeguards.*
@@ -217,9 +219,97 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 
 ```{r training-eda, eval=FALSE}
 # Use analysis_data[train_id, ] only. Add focused plots and summaries.
+train_df <- analysis_data[train_id, ]
+
+# Pairwise correlation among predictors
+cor_matrix <- cor(
+  train_df[, predictors],
+  use = "complete.obs"
+)
+
+knitr::kable(
+  round(cor_matrix, 2),
+  caption = "Pairwise correlation matrix among predictors"
+)
+
+
+# Response Distribution 
+hist(y_train)
+summary(y_train)
+
+# Predictor Distribution
+boxplot(train_df$lcavol)
+boxplot(train_df$lweight)
+#.....
+
+
+# Correlation between predictors and response
+cor_response <- cor(
+  train_df[, predictors],
+  train_df$lpsa
+)
+
+knitr::kable(
+  round(cor_response, 2),
+  caption = "Correlation between predictors and lpsa"
+)
+
+
+# Check multicollinearity using VIF
+library(car)
+
+vif_model <- lm(
+  lpsa ~ .,
+  data = train_df[, c("lpsa", predictors)]
+)
+
+vif_values <- vif(vif_model)
+
+knitr::kable(
+  round(vif_values, 2),
+  caption = "Variance Inflation Factor (VIF)"
+)
+
+
+# Predictor-response plots
+par(mfrow = c(2,4))
+
+for (var in predictors) {
+  plot(
+    train_df[[var]],
+    train_df$lpsa,
+    xlab = var,
+    ylab = "lpsa",
+    main = paste(var, "vs lpsa"),
+    pch = 19
+  )
+
+  abline(
+    lm(train_df$lpsa ~ train_df[[var]]),
+    col = "red"
+  )
+}
+
+par(mfrow = c(1,1))
+
 ```
 
 *Interpret multicollinearity, one anomaly, and the question regularization will address.*
+
+1. Target distribution
+->   lpsa có skew/outlier không?
+
+2. Predictor distribution
+->  feature có vấn đề không?
+
+3. Predictor-response correlation
+->  feature nào có liên hệ với Y?
+
+4. Predictor-predictor correlation
+-> feature nào có thông tin trùng nhau?
+
+5. VIF
+-> multicollinearity có nghiêm trọng không cho từng predictor (so với predictor còn lại?)?
 
 # Problem 2. OLS, ridge, and lasso
 
