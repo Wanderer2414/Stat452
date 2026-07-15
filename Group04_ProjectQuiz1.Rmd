@@ -361,7 +361,7 @@ training rows only.
 
 ## 1B. Split and train-only preprocessing
 
-```{r split-and-scale, eval=FALSE}
+```{r split-and-scale}
 split <- split_rows(nrow(analysis_data), seed = seeds$split)
 train_id <- split$train
 test_id <- split$test
@@ -392,9 +392,146 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 
 ## 2A. OLS baseline
 
-```{r ols, eval=FALSE}
-# Fit OLS on x_train and y_train. Do not access y_test here.
+```{r ols}
+# Convert x_train (matrix) and y_train into a data frame for lm()
+train_data <- data.frame(y = y_train, x_train)
+
+# 1. Fit OLS on the training set
+ols_fit <- lm(y ~ ., data = train_data)
+
+# 2. Extract coefficients (tidy table via broom)
+ols_coefs <- broom::tidy(ols_fit)
+kable(
+  ols_coefs,
+  digits = 4,
+  caption = "OLS coefficient estimates on standardized training data."
+)
+
+# 3. R-squared and Adjusted R-squared from the model summary
+ols_summary <- summary(ols_fit)
+cat(sprintf("R-squared:          %.4f\n", ols_summary$r.squared))
+cat(sprintf("Adjusted R-squared: %.4f\n", ols_summary$adj.r.squared))
+
+# 4. Predict on the training set and evaluate training error
+ols_train_pred <- predict(ols_fit, newdata = train_data)
+ols_train_metrics <- score_regression(y = y_train, prediction = ols_train_pred)
+cat(sprintf("Training RMSE:      %.4f\n", ols_train_metrics["RMSE"]))
+cat(sprintf("Training MAE:       %.4f\n", ols_train_metrics["MAE"]))
+
+# 5. Five-fold CV error using the shared foldid with ridge/lasso
+#    (lm() has no built-in CV, so we compute it manually)
+K <- max(foldid)
+cv_mse_folds <- numeric(K)
+for (k in seq_len(K)) {
+  idx_train_k <- which(foldid != k)
+  idx_val_k   <- which(foldid == k)
+  fold_data   <- data.frame(y = y_train[idx_train_k], x_train[idx_train_k, , drop = FALSE])
+  fold_fit    <- lm(y ~ ., data = fold_data)
+  fold_pred   <- predict(fold_fit,
+                         newdata = data.frame(x_train[idx_val_k, , drop = FALSE]))
+  cv_mse_folds[k] <- mean((y_train[idx_val_k] - fold_pred)^2)
+}
+ols_cv_mse  <- mean(cv_mse_folds)
+ols_cv_rmse <- sqrt(ols_cv_mse)
+cat(sprintf("5-fold CV MSE:      %.4f\n", ols_cv_mse))
+cat(sprintf("5-fold CV RMSE:     %.4f\n", ols_cv_rmse))
 ```
+
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Observations exceeding the 4/n threshold (dashed line) are flagged as influential.", fig.height=4}
+# 6. Residual / influence diagnostic: Cook's distance
+cooks_d   <- cooks.distance(ols_fit)
+n_train   <- nrow(train_data)
+threshold <- 4 / n_train
+
+plot(cooks_d,
+     type = "h", lwd = 1.5, col = "steelblue",
+     ylab = "Cook's distance", xlab = "Observation index",
+     main = "Cook's Distance — OLS Baseline")
+abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
+text_idx <- which(cooks_d > threshold)
+if (length(text_idx)) {
+  text(text_idx, cooks_d[text_idx],
+       labels = text_idx, pos = 3, cex = 0.8, col = "firebrick")
+}
+cat(sprintf("Threshold (4/n):    %.4f\n", threshold))
+cat(sprintf("Influential points: %d of %d\n", length(text_idx), n_train))
+```
+
+```{r ols-helpers, echo=FALSE}
+# Helper functions to extract coefficient and p-value by term name
+ols_beta <- function(term) ols_coefs$estimate[ols_coefs$term == term]
+ols_pval <- function(term) ols_coefs$p.value[ols_coefs$term == term]
+
+# Compute lcavol–lcp correlation on training data (used in narrative)
+cor_lcavol_lcp <- cor(x_train[, "lcavol"], x_train[, "lcp"])
+
+# Identify non-significant predictors (p > 0.05, excluding intercept)
+nonsig_terms <- ols_coefs %>%
+  filter(term != "(Intercept)", p.value > 0.05) %>%
+  pull(term)
+nonsig_max_t <- ols_coefs %>%
+  filter(term %in% nonsig_terms) %>%
+  summarise(max_abs_t = max(abs(statistic))) %>%
+  pull(max_abs_t)
+nonsig_min_p <- ols_coefs %>%
+  filter(term %in% nonsig_terms) %>%
+  summarise(min_p = min(p.value)) %>%
+  pull(min_p)
+```
+
+**Model summary.** The OLS model is fitted on the `r nrow(x_train)`
+standardized training observations with all `r ncol(x_train)` predictors.
+Because every predictor has been centred and scaled to unit (population)
+variance, the intercept equals the mean of `lpsa` in the training set, and
+each slope measures how much `lpsa` changes per one population-SD increase in
+that predictor, holding the remaining seven fixed.
+
+**Coefficient interpretation.** Two predictors dominate.
+
+- `lcavol` carries the largest standardized coefficient
+  ($\hat{\beta} \approx `r round(ols_beta("lcavol"), 2)`$,
+  $p `r ifelse(ols_pval("lcavol") < 0.001, "< 0.001", sprintf("\\approx %.3f", ols_pval("lcavol")))`$),
+  confirming that log cancer volume is the single strongest linear predictor
+  of log PSA.
+- `svi` is the second-largest contributor
+  ($\hat{\beta} \approx `r round(ols_beta("svi"), 2)`$,
+  $p \approx `r round(ols_pval("svi"), 3)`$), indicating that seminal
+  vesicle invasion is associated with meaningfully higher PSA even after
+  adjusting for tumour volume.
+- `lweight` is marginally significant
+  ($p \approx `r round(ols_pval("lweight"), 3)`$); the remaining
+  `r length(nonsig_terms)` predictors
+  (`r paste0("\x60", nonsig_terms, "\x60", collapse = ", ")`) all have
+  $|t| < `r round(nonsig_max_t + 0.05, 1)`$ and
+  $p > `r round(nonsig_min_p - 0.01, 2)`$.
+
+**Collinearity concern.** The near-zero and sign-reversed coefficient for
+`lcp` ($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) is noteworthy:
+biologically, greater capsular penetration should correlate positively with
+PSA, and indeed the marginal correlation is positive. The sign flip in OLS is
+a classic symptom of multicollinearity --- `lcavol` and `lcp` are strongly
+correlated ($r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set),
+so OLS distributes their shared variance unevenly. Regularization in 2B--2C
+is expected to stabilize these shared-variance coefficients.
+
+**Cross-validation error.** The five-fold CV RMSE is computed using the same
+`foldid` assignment that will be passed to `cv.glmnet` for ridge and lasso,
+ensuring a like-for-like comparison. Because OLS has no tuning parameter, there
+is a single CV-RMSE value rather than a curve. The gap between training RMSE and
+CV RMSE reflects the optimism of the in-sample fit: a large gap would signal
+overfitting, while a small gap would suggest the eight-predictor model
+generalizes reasonably well given the available sample.
+
+**Influence diagnostic.** The Cook's distance plot flags observations whose
+removal would substantially shift the fitted coefficients. The conventional
+threshold $4/n$ is shown as a dashed line. Any point above this line has
+outsized leverage, large residual, or both. In a sample of only
+`r nrow(x_train)` training rows, even one or two influential points can
+destabilize an unpenalized fit --- particularly for the collinear predictors
+`lcavol`/`lcp` whose coefficient estimates are already fragile. These
+influential observations are retained in the analysis (not removed) because
+they are clinically valid patients; their effect is instead mitigated by the
+regularization introduced in 2B--2C.
 
 ## 2B. Ridge
 
