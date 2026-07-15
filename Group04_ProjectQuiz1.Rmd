@@ -209,18 +209,6 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 }
 ```
 
-```{r data-configuration-duplicate, eval=FALSE, include=FALSE}
-#
-data_raw <- read.csv(find_exam_data(config$file), check.names = FALSE)
-predictors <- setdiff(names(data_raw), config$excluded)
-analysis_data <- data_raw[, c(config$response, predictors), drop = FALSE]
-
-if (anyNA(analysis_data)) stop("Declare a training-only missing-value plan.")
-if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
-  stop("The assigned response and predictors must be numeric.")
-}
-```
-
 *Define the prediction task and justify every exclusion.*
 
 **Assignment.** Group 04 is even-numbered, so the assigned dataset is
