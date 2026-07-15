@@ -209,10 +209,19 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 }
 ```
 
-*Define the prediction task and justify every exclusion.*
-
 **Assignment.** Group 04 is even-numbered, so the assigned dataset is
 `prostate.csv` and the assigned response is `lpsa`.
+
+**Dataset overview.** The `prostate.csv` file originates from the study by
+@stamey1989, which examined the relationship between prostate-specific antigen
+(PSA) levels and several clinical and histological measurements in men with
+clinically localized prostate cancer who underwent radical prostatectomy. The
+dataset contains `r nrow(data_raw)` observations and `r ncol(data_raw)` variables
+--- one continuous response (`lpsa`) and eight candidate predictors covering
+tumour characteristics, patient demographics, and biopsy summaries. All variables
+are numeric and the dataset has no missing values, so no imputation or factor
+encoding is required. Individual variable definitions are detailed in the overview
+table below.
 
 **Response.** `lpsa` is the natural logarithm of prostate-specific antigen
 (ng/mL), a continuous serum marker measured before surgery. It is modelled on
@@ -231,10 +240,36 @@ lasso trade prediction error against coefficient stability and interpretability
 when several predictors are correlated.
 
 **Candidate predictors.** All `r length(predictors)` remaining variables are
-retained: `lcavol`, `lweight`, `age`, `lbph`, `svi`, `lcp`, `gleason`, and
-`pgg45`. Every one is numeric, so the template's type guard passes and the design
-matrix needs no factor encoding. The overview table below records what each
-variable means, the unit it is measured in, and the integrity checks it survived.
+retained as candidate predictors. Every one is numeric, so the template's type
+guard passes and the design matrix needs no factor encoding. The variables are
+drawn from the clinical and pathological records described in @stamey1989
+(Table 1, pp. 1077--1078) and are summarized below.
+
+- `lcavol` --- log of cancer volume (log cm$^3$), estimated by ultrasound
+  before surgery. Larger tumours are expected to produce more PSA.
+- `lweight` --- log of total prostate weight (log g), measured at
+  prostatectomy. Reflects overall prostate size, including both cancerous and
+  non-cancerous tissue.
+- `age` --- patient age at the time of diagnosis (years).
+- `lbph` --- log of the amount of benign prostatic hyperplasia (log cm$^2$).
+  BPH is non-cancerous prostate enlargement and can independently elevate PSA.
+- `svi` --- seminal vesicle invasion (binary: 1 = present, 0 = absent),
+  indicating whether cancer has spread beyond the prostate into the seminal
+  vesicles. This is a known marker of advanced disease.
+- `lcp` --- log of capsular penetration (log cm), measuring the extent to
+  which cancer has invaded through the prostate capsule. Together with `svi`,
+  it captures local disease progression.
+- `gleason` --- combined Gleason score (integer, ranging from 6 to 9 in this
+  sample), the standard histological grading system for prostate cancer
+  aggressiveness assigned by a pathologist from biopsy tissue.
+- `pgg45` --- percentage of Gleason grades 4 or 5 in the biopsy specimen
+  (percent, 0--100). Higher values indicate a larger proportion of
+  poorly-differentiated, aggressive tumour tissue.
+
+All eight predictors were recorded before or during the prostatectomy procedure
+and are defined independently of the serum PSA measurement, so none introduces
+outcome leakage. The overview table below records the unit, data type, number
+of distinct values, and missing-value count for each variable.
 
 **Exclusions.** The project brief requires only that `lpsa` itself be removed
 from the predictor set, and permits a further exclusion only when a statistical
@@ -244,19 +279,17 @@ are measurements taken before surgery (tumour volume, prostate weight, age, beni
 hyperplasia, seminal vesicle invasion, capsular penetration, and the two Gleason
 summaries), and none uses PSA information in its definition.
 
-**Why an outcome-derived predictor would invalidate the comparison.** A variable
-computed from the response carries the answer inside the design matrix. Its
-least-squares coefficient would absorb nearly all explained variance, the
-training and cross-validation errors of every method would collapse toward zero,
-and the resulting model would fail on any new patient whose PSA is not yet known
---- which is precisely the deployment situation. The comparison itself would also
-become meaningless: OLS, ridge, and lasso would all be fitting the same leaked
-signal, so differences between them would reflect how each penalty shrinks that
-one dominant column rather than how each method handles genuine multicollinearity
-among clinical predictors. The parallel assignment makes the point concrete: for
-`fat.csv` the brief excludes `siri`, `density`, and `free` because they are
-alternative body-fat calculations. `prostate.csv` has no such variable, which is
-why no additional exclusion is warranted here.
+**Leakage rationale.** A variable computed from the response carries the answer
+inside the design matrix. Its least-squares coefficient would absorb nearly all
+explained variance, the training and cross-validation errors of every method
+would collapse toward zero, and the resulting model would fail on any new patient
+whose PSA is not yet known --- which is precisely the deployment situation. The
+comparison itself would also become meaningless: OLS, ridge, and lasso would all
+be fitting the same leaked signal, so differences between them would reflect how
+each penalty shrinks that one dominant column rather than how each method handles
+genuine multicollinearity among clinical predictors. Because none of the eight
+candidate predictors in `prostate.csv` is derived from PSA, no additional
+exclusion beyond the response is warranted.
 
 ```{r data-overview}
 meaning <- c(
