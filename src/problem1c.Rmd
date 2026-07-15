@@ -1,14 +1,8 @@
 ---
+title: "Problem 1C "
+output: pdf_document
 output:
   pdf_document: default
-  html_document: default
----
-
---
-title: "Problem 1C "
-author: "Group 4"
-date: "2026-07-14"
-output: pdf_document
 ---
 # Setup helper functions
 ```{r setup}
@@ -21,7 +15,7 @@ train_df <- analysis_data[train_id, ]
 
 # 1C. Training-data exploration
 ## Pairwise correlation among predictors
-```{r training-eda, eval=FALSE}
+```{r eda-cor}
 # Pairwise correlation among predictors
 cor_matrix <- cor(
   train_df[, predictors],
@@ -32,21 +26,34 @@ knitr::kable(
   round(cor_matrix, 2),
   caption = "Pairwise correlation matrix among predictors"
 )
-
 ```
 
+```{r eda-heatmap}
+# Correlation heatmap
+cor_matrix <- cor(train_df[, predictors], use = "complete.obs")
+
+image(1:ncol(cor_matrix), 1:ncol(cor_matrix), cor_matrix, 
+      axes = FALSE, xlab = "", ylab = "", 
+      col = heat.colors(1000), main = "Correlation Heatmap of Predictors")
+axis(1, at = 1:ncol(cor_matrix), labels = colnames(cor_matrix), las = 2)
+axis(2, at = 1:ncol(cor_matrix), labels = colnames(cor_matrix), las = 1)
+```
 The pairwise correlation matrix was examined to identify potential relationships among predictors. Most predictors showed weak to moderate correlations, suggesting limited redundancy between features. However, some stronger positive correlations were observed, particularly between gleason and pgg45 (r = 0.78), lcavol and lcp (r = 0.68), and svi and lcp (r = 0.69). These relationships indicate that some predictors may share related clinical information. Therefore, Variance Inflation Factor (VIF) analysis was further performed to assess the overall multicollinearity effect in the regression model.
 
 
-```{r training-eda, eval=FALSE}
-# Response Distribution 
+## Response Distribution 
+
+```{r eda-response-dist}
+
 hist(y_train)
 summary(y_train)
 ```
 The distribution of the response variable (lpsa) was examined using a histogram and summary statistics. The response values range from -0.43 to 5.58, with a median of 2.57 and a mean of 2.48. The mean and median are relatively close, indicating that the distribution is approximately symmetric with no strong skewness. Although some observations appear at the lower and higher ends of the range, no severe outliers are evident from the overall distribution. Therefore, no transformation was applied to the response variable before model training.
 
-```{r training-eda, eval=FALSE}
-## Historgram
+## Histogram
+
+```{r eda-hist}
+
 par(mfrow = c(2,4))
 
 for (var in predictors) {
@@ -62,21 +69,26 @@ par(mfrow = c(1,1))
 
 ## Boxplot
 par(mfrow = c(2,4))
-
 for (var in predictors) {
   boxplot(
     train_df[[var]],
     main = var
   )
 }
-
 par(mfrow = c(1,1))
+
+boxplot(lpsa ~ gleason, data = train_df)
+boxplot(lpsa ~ svi, data = train_df)
+hist(train_df$svi)
 
 ```
 The histograms show that most predictors have different distribution patterns. lcavol, lweight, and age are approximately symmetric, while lbph, lcp, and pgg45 exhibit right-skewed distributions with longer tails toward higher values. svi and gleason are discrete variables with highly concentrated values. These distribution characteristics are considered in later regression analysis and model diagnostics.
 
+Upon inspecting the visualizations, a potential influential observation is evident in the lweight vs lpsa plot. There is a single data point located at the far right with an exceptionally high lweight (exceeding 6.0) but a relatively low lpsa (approximately 2.0).
+
+## Correlation between predictors and response
+
 ```{r training-eda, eval=FALSE}
-# Correlation between predictors and response
 cor_response <- cor(
   train_df[, predictors],
   train_df$lpsa
@@ -90,7 +102,7 @@ knitr::kable(
 
 The correlation analysis indicates that all predictors have positive correlations with lpsa. lcavol shows the strongest relationship (r = 0.77), followed by lcp (r = 0.59) and svi (r = 0.57). Variables such as pgg45, gleason, and lweight have moderate correlations, while age and lbph show weak associations. Therefore, lcavol, lcp, and svi are likely to be important predictors in the multiple linear regression model.
 
-```{r training-eda, eval=FALSE}
+```{r eda-vif}
 # Check multicollinearity using VIF
 vif_model <- lm(
   lpsa ~ .,
@@ -136,3 +148,7 @@ Categorical Patterns: Variables such as svi (binary) and gleason (ordinal) displ
 
 Weak Trends: age and lbph exhibit highly dispersed data clouds with very flat regression lines, indicating weak independent linear relationships with the target.
 
+
+
+# Question
+Given the varying individual predictive strengths of these features and the moderate structural correlations (e.g., between pgg45 and lcp), will an $L_{1}$ penalty (Lasso) completely eliminate the structurally weaker predictors like age to produce a strictly sparse model, or will an $L_{2}$ penalty (Ridge) prove more stable against the identified high-leverage anomaly in lweight?

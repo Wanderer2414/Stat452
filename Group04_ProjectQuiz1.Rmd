@@ -175,7 +175,7 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
 
 ## 1A. Target and predictors
 
-```{r data-configuration, eval=FALSE}
+```{r data-configuration}
 config <- list(
   file = "prostate.csv",
   response = "lpsa",
@@ -189,13 +189,15 @@ if (anyNA(analysis_data)) stop("Declare a training-only missing-value plan.")
 if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
   stop("The assigned response and predictors must be numeric.")
 }
+
+
 ```
 
 *Define the prediction task and justify every exclusion.*
 
 ## 1B. Split and train-only preprocessing
 
-```{r split-and-scale, eval=FALSE}
+```{r split-and-scale}
 split <- split_rows(nrow(analysis_data), seed = seeds$split)
 train_id <- split$train
 test_id <- split$test
@@ -211,16 +213,19 @@ y_test <- y_raw[test_id]
 
 foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 sum(is.na(analysis_data))
+
+save(x_train, y_train, x_test, y_test, analysis_data, train_id, test_id, foldid, file = "data/tmpData.RData")
 ```
 
 *Report seeds, dimensions, scaling, folds, and leakage safeguards.*
 
 ## 1C. Training-data exploration
 
-```{r training-eda, eval=FALSE}
+```{r training-eda}
 # Use analysis_data[train_id, ] only. Add focused plots and summaries.
 train_df <- analysis_data[train_id, ]
 
+show(train_df)
 # Pairwise correlation among predictors
 cor_matrix <- cor(
   train_df[, predictors],
@@ -291,7 +296,6 @@ for (var in predictors) {
 }
 
 par(mfrow = c(1,1))
-
 ```
 
 *Interpret multicollinearity, one anomaly, and the question regularization will address.*
@@ -315,27 +319,124 @@ par(mfrow = c(1,1))
 
 ## 2A. OLS baseline
 
-```{r ols, eval=FALSE}
+```{r ols}
 # Fit OLS on x_train and y_train. Do not access y_test here.
 ```
 
 ## 2B. Ridge
 
-```{r ridge, eval=FALSE}
+```{r ridge}
 # Use fit_cv_glmnet(..., alpha = 0, foldid = foldid).
 # Report lambda.min, lambda.1se, paths, coefficients, and CV evidence.
 ```
 
 ## 2C. Lasso
 
-```{r lasso, eval=FALSE}
-# Use fit_cv_glmnet(..., alpha = 1, foldid = foldid).
-# Report lambda.min, lambda.1se, paths, and nonzero predictors.
+
+### Model fitting and cross-validation
+
+
+```{r lasso-fit}
+lasso_cv <- fit_cv_glmnet(
+    x = x_train,
+    y = y_train,
+    alpha = 1,
+    foldid = foldid
+)
+plot(lasso_cv)
+
 ```
 
-## 2D. Training-based comparison and locked core model
+Based on the 5-fold cross-validation curve generated for the Lasso regression model ($\alpha = 1$), we observe the relationship between the tuning parameter $\lambda$ and the Mean-Squared Error (MSE). The top axis indicates the number of active (non-zero) predictors retained in the model at each level of penalization.
 
-```{r core-comparison, eval=FALSE}
+* The Cross-Validation Curve: The red dots represent the average CV-MSE across the 5 folds for each $\lambda$ value, with the gray error bars denoting one standard error above and below the mean. As $-\log(\lambda)$ increases (moving from left to right, meaning the penalty weakens), the MSE initially drops, reaches a minimum, and then slightly stabilizes as the model approaches the unpenalized OLS limit.
+
+* Optimal $\lambda$ ($\lambda_{\text{min}}$): The right vertical dashed line marks `lambda.min`, the value that strictly minimizes the cross-validation MSE. At this optimal point for prediction accuracy ($-\log(\lambda) \approx 2.4$), the Lasso penalty retains 5 non-zero predictors*.
+
+* Parsimonious $\lambda$ ($\lambda_{\text{1se}}$): The left vertical dashed line marks `lambda.1se`, selected by the one-standard-error rule. This value applies a stronger penalty ($-\log(\lambda) \approx 1.67$) to produce a sparser model. It retains only 3 non-zero predictors while keeping the error within one standard deviation of the absolute minimum MSE, offering a robust trade-off between predictive power and model simplicity.
+
+### Analysis of $\lambda_{\text{min}}$
+
+```{r lasso-min}
+lambda_min <- lasso_cv$lambda.min
+coef(lasso_cv, s="lambda.min")
+count_nonzero(lasso_cv, s="lambda.min")
+```
+
+
+The optimal tuning parameter selected by five-fold cross-validation is $\lambda_{\text{min}} = 0.0891$. This value minimizes the cross-validation Mean Squared Error (CV-MSE), providing the best predictive performance among all candidate penalty values.
+
+At this level of regularization, the Lasso model retains five non-zero predictors: lcavol, lweight, lbph, svi, and pgg45. The remaining predictors (age, lcp, and gleason) are shrunk exactly to zero, demonstrating Lasso's ability to perform automatic variable selection while maintaining predictive accuracy.
+
+The retained predictors suggest that tumor volume (lcavol) is the most influential variable, having the largest estimated coefficient (0.6761). Variables related to body weight (lweight), benign prostatic hyperplasia (lbph), seminal vesicle invasion (svi), and the percentage of Gleason grades 4 or 5 (pgg45) also contribute to predicting PSA levels, although with relatively smaller effects.
+
+Overall, $\lambda_{\text{min}}$ produces the model with the lowest cross-validation error while preserving a moderate number of predictors, offering a balance between prediction accuracy and model complexity.
+
+```{r lasso-cv-error-min}
+cv_mse_min <- lasso_cv$cvm[
+    lasso_cv$lambda==
+    lasso_cv$lambda.min
+]
+cv_mse_min
+```
+The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(cv_mse_min, 4)`**. This value corresponds to $\lambda_{\text{min}} = `r round(lasso_cv$lambda.min, 4)`$ and represents the estimated prediction error obtained during model tuning using the training data.
+
+A lower CV-MSE indicates better expected predictive performance on unseen data. Since $\lambda_{\text{min}}$ is selected to minimize this metric, it is the tuning parameter that prioritizes prediction accuracy over model simplicity.
+
+
+### Analysis of $\lambda_{\text{1se}}$
+
+```{r lasso-1se}
+lambda_1se <- lasso_cv$lambda.1se
+coef(lasso_cv, s="lambda.1se")
+count_nonzero(lasso_cv, s="lambda.1se")
+```
+The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
+
+Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the variables lbph and pgg45 are removed, resulting in a more parsimonious and interpretable model with only a small loss in predictive performance.
+
+```{r lasso-cv-error-1se}
+cv_mse_1se <- lasso_cv$cvm[
+    lasso_cv$lambda==
+    lasso_cv$lambda.1se
+]
+cv_mse_1se
+```
+The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, resulting in a five-fold cross-validation Mean Squared Error (CV-MSE) of r round(cv_mse_1se, 4). Although this error is slightly higher than that of $\lambda_{\text{min}}$, it remains within one standard error of the minimum while providing a more conservative model.
+
+Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the predictors lbph and pgg45 are removed, resulting in a simpler and more interpretable model with only a modest reduction in predictive performance.
+
+### Coefficient Path
+
+```{r lasso-coef-path}
+lasso_fit <- glmnet(
+    x_train,
+    y_train,
+    alpha=1,
+    standardize=FALSE,
+      
+)
+
+plot(lasso_fit, xvar = "lambda", label = TRUE)
+
+legend("topleft", 
+       legend = rownames(lasso_fit$beta), 
+       col = 1:nrow(lasso_fit$beta), 
+       lty = 1, 
+       cex = 0.7,
+       lwd = 2,
+       title = "Predictors")
+
+```
+
+
+Overall, the coefficient path shows that as $-\log(\lambda)$ increases (equivalently, as $\lambda$ decreases), the regularization penalty becomes weaker, allowing more predictors to enter the model and their coefficients to increase in magnitude. Under strong regularization, many coefficients are shrunk exactly to zero, while weaker regularization gradually recovers the full model.
+
+Among the predictors, **lcavol** enters the model first and consistently has the largest coefficient, indicating that it is the most influential predictor of **lpsa**. **svi** and **lweight** also become active relatively early and maintain positive coefficients throughout the path. In contrast, **age, lbph, lcp, gleason,** and **pgg45** enter only when the penalty becomes sufficiently small, suggesting that their contributions are comparatively weaker and less stable.
+
+## 2D 
+
+```{r core-comparison}
 # Build a comparison from training/CV quantities only.
 ```
 
@@ -345,7 +446,7 @@ par(mfrow = c(1,1))
 
 **Prediction before running the check:** [prediction]
 
-```{r perturbation, eval=FALSE}
+```{r perturbation}
 # Implement one allowed training-only stability check.
 ```
 
@@ -357,7 +458,7 @@ par(mfrow = c(1,1))
 
 *Write the ridge derivation. Define dimensions and explain uniqueness.*
 
-```{r ridge-conditioning, eval=FALSE}
+```{r ridge-conditioning}
 # Use x_train and the fitted ridge lambda.min.
 # safe_condition_numbers(x_train, lambda = ...)
 ```
@@ -382,7 +483,7 @@ par(mfrow = c(1,1))
 
 ## 4B. Elastic net on original predictors
 
-```{r original-elastic-net, eval=FALSE}
+```{r original-elastic-net}
 alpha_grid <- c(0.10, 0.25, 0.50, 0.75, 0.90)
 
 # Fit one cv.glmnet object per alpha with the same foldid.
@@ -391,7 +492,7 @@ alpha_grid <- c(0.10, 0.25, 0.50, 0.75, 0.90)
 
 ## 4C. Fixed ReLU features
 
-```{r random-relu-features, eval=FALSE}
+```{r random-relu-features}
 relu <- function(z) pmax(z, 0)
 M <- 200L
 
@@ -408,7 +509,7 @@ M <- 200L
 
 > **Locked before viewing `y_test`:** [preprocessing, candidate specifications, selected tuning values, feature seed, nominated deployment model, metrics]
 
-```{r final-holdout-evaluation, eval=FALSE}
+```{r final-holdout-evaluation}
 # This must be the first analysis chunk that uses y_test for evaluation.
 # Generate all fixed candidate predictions and one RMSE/MAE table here.
 ```
@@ -441,7 +542,7 @@ M <- 200L
 
 # Preflight and session information {-}
 
-```{r preflight, eval=FALSE}
+```{r preflight}
 # Add every object required to reproduce the final table and figures.
 required_objects <- c(
   "train_id", "test_id", "x_train", "x_test", "y_train", "y_test", "foldid"
