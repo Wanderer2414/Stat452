@@ -173,7 +173,7 @@ boxplot(lweight_data)
 hist(y_scale, breaks = seq(floor(min(y_scale)), ceiling(max(y_scale)), by=0.6), main="Distribution of Response", xlab="Response Variable", col="lightblue")
 
 # OLS
-
+par(mfrow(2,2))
 data <- data.frame(
   x = x_train[,predictors[1]],
   y = y_train
@@ -182,6 +182,7 @@ data <- data.frame(
 par(mfrow=c(2,2))
 ols <- lm(y_train~x_train)
 plot(ols)
+summary(ols)
 
 data$y_s <- fitted(ols)
 
@@ -198,8 +199,26 @@ k
 
 # Ridge
 
-par(mfrow=c(1,1))
 x <- as.matrix(x_train)
 y <- as.numeric(y_train)
-ridge <- cv.glmnet(x = x, y = y, alpha=0, foldid = foldid)
+ridge$lambda.1se
+ridge <- cv.glmnet(x = x_train, y = y_train, alpha=0, foldid = foldid)
 plot(ridge)
+show(ridge)
+
+summary(ridge$glmnet.fit)
+
+coef(ridge, s="lambda.1se")
+
+ridge$cvm
+ridge$glmnet.fit
+ridge$lambda.min
+
+
+n_vars <- nrow(ridge$glmnet.fit$beta)
+plot(ridge$glmnet.fit)
+legend("bottomright", 
+       legend = rownames(ridge$glmnet.fit$beta), 
+       col = 1:n_vars, 
+       lty = 1, 
+       cex = 0.6)

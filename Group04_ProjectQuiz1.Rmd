@@ -174,7 +174,7 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
 
 ## 1A. Target and predictors
 
-```{r data-configuration, eval=FALSE}
+```{r data-configuration}
 config <- list(
   file = "prostate.csv",
   response = "lpsa",
@@ -194,7 +194,7 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 
 ## 1B. Split and train-only preprocessing
 
-```{r split-and-scale, eval=FALSE}
+```{r split-and-scale}
 split <- split_rows(nrow(analysis_data), seed = seeds$split)
 train_id <- split$train
 test_id <- split$test
@@ -225,16 +225,76 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 
 ## 2A. OLS baseline
 
-```{r ols, eval=FALSE}
+```{r ols}
 # Fit OLS on x_train and y_train. Do not access y_test here.
+ols <- lm(y_train ~ x_train)
 ```
 
 ## 2B. Ridge
 
-```{r ridge, eval=FALSE}
-# Use fit_cv_glmnet(..., alpha = 0, foldid = foldid).
-# Report lambda.min, lambda.1se, paths, coefficients, and CV evidence.
+### Cross-validation curve:
+
+```{r ridge}
+
+ridge <- fit_cv_glmnet(x = x_train, y = y_train, alpha=0, foldid = foldid)
+plot(ridge)
+
 ```
+The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalently, as $\lambda$ decreases), suggesting that reducing the regularization strength improves predictive performance. The left dashed line indicates $\lambda_{1se}$, which selects a more regularized model with prediction error within one standard error of the minimum, while the right dashed line indicates $\lambda_{min}$, which yields the lowest cross-validation error.
+
+### Lambda min:
+```{r}
+
+g <- crossprod(x_train)
+eigen <- eigen(g)$value
+
+lambda <- ridge$lambda.min
+cat("Lambda min: ",lambda, "\n")
+cat("MSE: ", ridge$cvm[ridge$lambda == lambda], "\n")
+cat("Condition number:", (max(eigen) + lambda)/(min(eigen) + lambda), "\n")
+
+```
+With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} \approx 0.61$, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
+
+### Lambda 1se:
+```{r}
+
+g <- crossprod(x_train)
+eigen <- eigen(g)$value
+
+lambda <- ridge$lambda.1se
+cat("Lambda 1se: ",lambda, "\n")
+cat("MSE: ", ridge$cvm[ridge$lambda == lambda], "\n")
+cat("Condition number:", (max(eigen) + lambda)/(min(eigen) + lambda), "\n")
+
+```
+Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \approx 1.02$, the condition number decreased only slightly from 20.2 to 19.07, indicating minimal improvement in numerical stability. In contrast, the cross-validation MSE increased from 0.61 to 0.66. Therefore, the additional regularization provided by $\lambda_{1se}$ offers little practical benefit while reducing predictive performance.
+
+### Coefficients:
+```{r}
+
+data.frame(
+  OLS = as.numeric(coef(ols)),
+  Lambda_Min = as.numeric(coef(ridge, "lambda.min")),
+  Lambda_Max = as.numeric(coef(ridge, "lambda.1se")),
+  row.names = names(ols$coefficients)
+)
+```
+
+Compared with the OLS model, Ridge regression shrinks most regression coefficients toward zero, reducing their magnitudes through the regularization penalty. This shrinkage helps alleviate the effects of multicollinearity while retaining all predictors in the model. Most coefficients exhibit the expected behavior by moving closer to zero as the regularization strength increases. However, two coefficients show notable exceptions. The coefficient of \textbf{lcp} changes from a small negative value in the OLS model to positive values under Ridge regression. In addition, the coefficient of \textbf{gleason} increases in magnitude, moving further away from zero rather than shrinking like the other coefficients. These changes suggest that the effects of \textbf{lcp} and \textbf{gleason} are influenced by multicollinearity with other predictors. As Ridge simultaneously estimates all coefficients under a penalty, it redistributes the effects among correlated variables, causing some coefficients to increase in magnitude or even change sign despite the overall shrinkage trend.
+
+```{R}
+n_vars <- nrow(ridge$glmnet.fit$beta)
+plot(ridge$glmnet.fit)
+legend("topleft", 
+       legend = rownames(ridge$glmnet.fit$beta), 
+       col = 1:n_vars, 
+       lty = 1, 
+       cex = 0.6)
+```
+As $\lambda$ increases, all regression coefficients are progressively shrunk toward zero, demonstrating the regularization effect of Ridge regression. Conversely, as $\lambda$ decreases, the coefficients gradually move away from zero toward their OLS estimates. The coefficient of \textbf{lcavol} remains the largest throughout the regularization path, indicating that it has the strongest association with the response variable. The coefficients of  \textbf{svi} and lweight also increase substantially as the regularization weakens, suggesting relatively strong effects on the response. In contrast, the coefficients of \textbf{gleason}, \textbf{lbph}, and \textbf{pgg45} remain relatively small across the entire path, indicating weaker contributions to the model. The coefficient of age remains negative throughout the regularization path, reflecting a consistent negative relationship with the response variable. Notably, the coefficient of  \textbf{lcp} exhibits non-monotonic behavior, first increasing and then decreasing as $\lambda$ changes, suggesting that its estimated effect is sensitive to multicollinearity with other predictors.
+
+To address multicollinearity, Ridge impose an $L_2$ penalty on the regression coefficients. Rather than assigning a large coefficient to one correlated predictor and a small coefficient to another, Ridge shrinks the coefficients simultaneously and redistributes their effects among the correlated variables. Consequently, the coefficient estimates become more stable and less sensitive to small changes in the data.
 
 ## 2C. Lasso
 
