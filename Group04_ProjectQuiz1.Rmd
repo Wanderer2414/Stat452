@@ -263,6 +263,28 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 
 # Problem 3. Mathematical mechanisms
 
+Let
+
+$$
+X \in \mathbb{R}^{n\times p}
+$$
+
+be the standardized training design matrix with $n$ observations and $p$ predictors.
+
+Let
+
+$$
+y\in\mathbb{R}^{n}
+$$
+
+be the response vector and
+
+$$
+b\in\mathbb{R}^{p}
+$$
+
+be the coefficient vector.
+
 ## 3A. Ridge and conditioning
 
 *Write the ridge derivation. Define dimensions and explain uniqueness.*
@@ -272,9 +294,463 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 # safe_condition_numbers(x_train, lambda = ...)
 ```
 
+## 3A. Ridge and conditioning
+
+### Ridge objective
+
+
+
+The ridge objective function is
+
+$$
+Q_\lambda(b)
+=
+\frac1{2}\|y-Xb\|^2
++
+\frac{\lambda}{2}\|b\|^2.
+$$
+
+Taking the gradient,
+
+$$
+\nabla Q_\lambda(b)
+=
+(X^TXb-X^Ty)
++
+\lambda b.
+$$
+
+Setting the gradient equal to zero,
+
+$$
+(X^TX+\lambda I)b=X^Ty.
+$$
+
+Define
+
+$$
+G=X^TX,
+\qquad
+z=X^Ty.
+$$
+
+Hence,
+
+$$
+(G+\lambda I)b=z,
+$$
+
+and therefore
+
+$$
+\boxed{
+\hat b
+=
+(G+\lambda I)^{-1}z.
+}
+$$
+
+Since $G$ is positive semidefinite and $\lambda>0$,
+
+$$
+G+\lambda I
+$$
+
+is positive definite and therefore invertible. Hence the ridge estimator is unique.
+
+The spectral condition number is
+
+$$
+\kappa_2(G)
+=
+\frac{\mu_{\max}}
+{\mu_{\min}},
+$$
+
+
+
+while ridge gives
+
+$$
+\kappa_2(G+\lambda I)
+=
+\frac{\mu_{\max}+\lambda}
+{\mu_{\min}+\lambda}.
+$$
+
+
+where
+
+$$
+\mu_{\max}=\max_i\mu_i
+$$
+
+is the **largest eigenvalue** of the Gram matrix \(G\), and
+
+$$
+\mu_{\min}=\min_i\mu_i
+$$
+
+is the **smallest (positive) eigenvalue** of \(G\).
+
+
+
+
+### Condition Number and Numerical Stability
+
+The Gram matrix is defined as
+
+$$
+G=\frac{1}{n}X^TX.
+$$
+
+Since \(G\) is symmetric and positive semidefinite, all of its eigenvalues are non-negative. Let the eigenvalues of \(G\) be
+
+$$
+\mu_1,\mu_2,\ldots,\mu_p,
+$$
+
+where
+
+$$
+\mu_{\max}=\max_i\mu_i,
+\qquad
+\mu_{\min}=\min_i\mu_i.
+$$
+
+The spectral condition number is defined as
+
+$$
+\kappa_2(G)
+=
+\frac{\mu_{\max}}
+{\mu_{\min}}.
+$$
+
+This quantity measures how sensitive the solution of a linear system is to small perturbations in the input data. A large condition number indicates that the Gram matrix is close to singular, so the estimated coefficients may change dramatically even when the training data are only slightly perturbed. Conversely, a small condition number indicates that the matrix is well-conditioned and the regression coefficients are numerically stable.
+
+Ridge regression replaces the Gram matrix by
+
+$$
+G+\lambda I.
+$$
+
+If the eigenvalues of \(G\) are
+
+$$
+\mu_1,\mu_2,\ldots,\mu_p,
+$$
+
+then the eigenvalues of the ridge matrix become
+
+$$
+\mu_1+\lambda,\,
+\mu_2+\lambda,\,
+\ldots,\,
+\mu_p+\lambda.
+$$
+
+Hence, the condition number becomes
+
+$$
+\kappa_2(G+\lambda I)
+=
+\frac{\mu_{\max}+\lambda}
+{\mu_{\min}+\lambda}.
+$$
+
+Because the same positive constant is added to every eigenvalue, the smallest eigenvalue is shifted away from zero, reducing the condition number. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the ridge estimator is guaranteed to have a unique solution.
+
+
+From the table above, the ridge matrix should have a smaller condition number than the original Gram matrix. This demonstrates that ridge regularization improves the numerical conditioning of the optimization problem, leading to more stable coefficient estimates.
+
+
 ## 3B. Lasso optimality and soft thresholding
 
 *Derive the zero/nonzero optimality conditions and the orthonormal-design formula.*
+
+## 3B. Lasso optimality and soft thresholding
+
+Lasso regression estimates the regression coefficients by minimizing
+
+$$
+Q_\lambda(b)
+=
+\|y-Xb\|^2
++
+\lambda\|b\|,
+$$
+
+where
+
+$$
+\|b\|
+=
+\sum_{j=1}^{p}|b_j|,
+$$
+
+and \(\lambda>0\) controls the amount of regularization.
+
+Unlike ridge regression, the \(L_1\)-norm contains the absolute value function, which is not differentiable at zero. Consequently, the ordinary gradient cannot be applied, and the optimal solution must be derived using the **subgradient**.
+
+### Step 1. Rewrite the Objective Function
+
+Assume that the predictors have been centered, standardized, and satisfy the orthonormal design condition
+
+$$
+X^TX=I.
+$$
+
+Define
+
+$$
+z=X^Ty.
+$$
+
+The squared error term can be expanded as
+
+$$
+\begin{aligned}
+\|y-Xb\|^2
+&= (y-Xb)^T(y-Xb)\\
+&= y^Ty - 2b^TX^Ty + b^TX^TXb.
+\end{aligned}
+$$
+
+Using
+
+$$
+X^TX=I,
+$$
+
+the objective becomes
+
+$$
+Q_\lambda(b)
+=
+\frac12b^Tb
+-
+b^Tz
++
+\lambda\sum_{j=1}^{p}|b_j|
++
+C,
+$$
+
+where
+
+$$
+C=y^Ty
+$$
+
+is a constant independent of \(b\).
+
+Expanding by coordinates,
+
+$$
+Q_\lambda(b)
+=
+\sum_{j=1}^{p}
+\left[
+\frac12b_j^2
+-
+z_jb_j
++
+\lambda|b_j|
+\right]
++
+C.
+$$
+
+Therefore, each coefficient can be optimized independently.
+
+
+### Step 2. Compute the Subgradient
+
+Since
+
+$$
+|b_j|
+$$
+
+is not differentiable at zero, its subgradient is
+
+$$
+\partial|b_j|
+=
+\begin{cases}
+1,&b_j>0,\\
+[-1,1],&b_j=0,\\
+-1,&b_j<0.
+\end{cases}
+$$
+
+The first-order optimality condition becomes
+
+$$
+0
+\in
+b_j-z_j
++
+\lambda\partial|b_j|.
+$$
+
+The solution is obtained by considering three cases.
+
+
+#### Case 1. Positive coefficient
+
+Suppose
+
+$$
+b_j>0.
+$$
+
+Then
+
+$$
+\partial|b_j|=1,
+$$
+
+and
+
+$$
+b_j-z_j+\lambda=0.
+$$
+
+Hence
+
+$$
+b_j=z_j-\lambda.
+$$
+
+For this solution to remain positive,
+
+$$
+z_j>\lambda.
+$$
+
+
+
+#### Case 2. Negative coefficient
+
+Suppose
+
+$$
+b_j<0.
+$$
+
+Then
+
+$$
+\partial|b_j|=-1,
+$$
+
+and
+
+$$
+b_j-z_j-\lambda=0.
+$$
+
+Therefore,
+
+$$
+b_j=z_j+\lambda.
+$$
+
+Since the coefficient must remain negative,
+
+$$
+z_j<-\lambda.
+$$
+
+
+#### Case 3. Zero coefficient
+
+Suppose
+
+$$
+b_j=0.
+$$
+
+The subgradient condition becomes
+
+$$
+0
+\in
+-z_j+\lambda[-1,1].
+$$
+
+This is satisfied whenever
+
+$$
+|z_j|\le\lambda.
+$$
+
+Therefore,
+
+$$
+b_j=0.
+$$
+
+This explains why lasso can produce exact zero coefficients.
+
+
+
+### Step 3. Soft-Thresholding Solution
+
+Combining the three cases,
+
+$$
+\hat b_j=
+\begin{cases}
+z_j-\lambda,&z_j>\lambda,\\
+0,&|z_j|\le\lambda,\\
+z_j+\lambda,&z_j<-\lambda.
+\end{cases}
+$$
+
+The piecewise solution can be written compactly as
+
+$$
+\boxed{
+\hat b_j
+=
+\operatorname{sign}(z_j)
+\left(|z_j|-\lambda\right)_+
+}
+$$
+
+where
+
+$$
+(a)_+=\max(a,0).
+$$
+
+This expression is known as the **soft-thresholding operator**.
+
+---
+
+### Interpretation
+
+The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
+
+$$
+|z_j|\le\lambda,
+$$
+
+the coefficient is shrunk completely to zero, meaning that the corresponding predictor is removed from the model. Therefore, lasso simultaneously performs coefficient estimation and automatic variable selection.
+
+In contrast, ridge regression continuously shrinks coefficients toward zero,
+
+$$
+\hat b_{\text{ridge}}
+=
+(G+\lambda I)^{-1}z,
+$$
+
+but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
+
 
 ## 3C. Connect algebra to evidence
 
