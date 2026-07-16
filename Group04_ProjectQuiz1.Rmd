@@ -782,6 +782,28 @@ $$
 
 but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
 
+---
+
+### Interpretation
+
+The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
+
+$$
+|z_j|\le\lambda,
+$$
+
+the coefficient is shrunk completely to zero, meaning that the corresponding predictor is removed from the model. Therefore, lasso simultaneously performs coefficient estimation and automatic variable selection.
+
+In contrast, ridge regression continuously shrinks coefficients toward zero,
+
+$$
+\hat b_{\text{ridge}}
+=
+(G+\lambda I)^{-1}z,
+$$
+
+but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
+
 
 ## 3C. Connect algebra to evidence
 
