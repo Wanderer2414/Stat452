@@ -1,7 +1,10 @@
 ---
 title: "ASESII 24A02 Project-Based Quiz 1"
 subtitle: "Ridge, Lasso, and Regularization for Neural Features"
-author: "Group XX: [names and student IDs]"
+author: |
+  | Group 04
+  | Nguyen Thi Yen Nhi (24125071), Nguyen Khang Thinh (24125104)
+  | Nguyen Van Tinh (24125106), Nguyen Le Quoc Huy (24125100)
 date: "`r format(Sys.Date(), '%Y-%m-%d')`"
 output:
   pdf_document:
@@ -18,6 +21,10 @@ params:
   group_number: 04
 fontsize: 11pt
 geometry: margin=1in
+header-includes:
+  - \usepackage{fvextra}
+  - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\}}
+  - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
 ---
 
 <!--
@@ -26,6 +33,7 @@ GroupXX_ProjectQuiz1.Rmd, place references.bib beside it, and set the group
 number parameter before rendering. Remove instructional comments from the
 final report.
 -->
+
 
 # Authorship and contribution statement {-}
 
@@ -59,7 +67,10 @@ library(glmnet)
 library(broom)
 library(knitr)
 
-group_number <- as.integer(params$group_number)
+# `params` exists only while knitting; the fallback
+# keeps interactive chunk runs working.
+has_params <- exists("params") && !is.null(params$group_number)
+group_number <- if (has_params) as.integer(params$group_number) else 4L
 if (length(group_number) != 1L || is.na(group_number) || group_number < 1L) {
   stop("Set params$group_number to your assigned positive group number.")
 }
@@ -190,7 +201,155 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 }
 ```
 
-*Define the prediction task and justify every exclusion.*
+**Assignment.** Group 04 is even-numbered, so the assigned dataset is
+`prostate.csv` and the assigned response is `lpsa`.
+
+**Dataset overview.** The `prostate.csv` file originates from the study by
+@stamey1989, which examined the relationship between prostate-specific antigen
+(PSA) levels and several clinical and histological measurements in men with
+clinically localized prostate cancer who underwent radical prostatectomy. The
+dataset contains `r nrow(data_raw)` observations and `r ncol(data_raw)` variables
+--- one continuous response (`lpsa`) and eight candidate predictors covering
+tumour characteristics, patient demographics, and biopsy summaries. All variables
+are numeric and the dataset has no missing values, so no imputation or factor
+encoding is required. Individual variable definitions are detailed in the overview
+table below.
+
+**Response.** `lpsa` is the natural logarithm of prostate-specific antigen
+(ng/mL), a continuous serum marker measured before surgery. It is modelled on
+the log scale, so every coefficient is read as a change in log PSA per one
+standard deviation of a standardized predictor.
+
+**Unit of observation and study population.** One row is one male patient
+with clinically localized prostate cancer who underwent radical prostatectomy
+in the study of @stamey1989. The analysis file contains `r nrow(data_raw)`
+complete patients. Any conclusion therefore generalizes only to comparable
+prostatectomy candidates, not to unscreened men in the general population.
+
+**Prediction objective.** Predict pre-operative `lpsa` from routinely
+available clinical and biopsy measurements, and compare how OLS, ridge, and
+lasso trade prediction error against coefficient stability and interpretability
+when several predictors are correlated.
+
+**Candidate predictors.** All `r length(predictors)` remaining variables are
+retained as candidate predictors. Every one is numeric, so the template's type
+guard passes and the design matrix needs no factor encoding. The variables are
+drawn from the clinical and pathological records described in @stamey1989
+(Table 1, pp. 1077--1078) and are summarized below.
+
+- `lcavol` --- log of cancer volume (log cm$^3$), estimated by ultrasound
+  before surgery. Larger tumours are expected to produce more PSA.
+- `lweight` --- log of total prostate weight (log g), measured at
+  prostatectomy. Reflects overall prostate size, including both cancerous and
+  non-cancerous tissue.
+- `age` --- patient age at the time of diagnosis (years).
+- `lbph` --- log of the amount of benign prostatic hyperplasia (log cm$^2$).
+  BPH is non-cancerous prostate enlargement and can independently elevate PSA.
+- `svi` --- seminal vesicle invasion (binary: 1 = present, 0 = absent),
+  indicating whether cancer has spread beyond the prostate into the seminal
+  vesicles. This is a known marker of advanced disease.
+- `lcp` --- log of capsular penetration (log cm), measuring the extent to
+  which cancer has invaded through the prostate capsule. Together with `svi`,
+  it captures local disease progression.
+- `gleason` --- combined Gleason score (integer, ranging from 6 to 9 in this
+  sample), the standard histological grading system for prostate cancer
+  aggressiveness assigned by a pathologist from biopsy tissue.
+- `pgg45` --- percentage of Gleason grades 4 or 5 in the biopsy specimen
+  (percent, 0--100). Higher values indicate a larger proportion of
+  poorly-differentiated, aggressive tumour tissue.
+
+All eight predictors were recorded before or during the prostatectomy procedure
+and are defined independently of the serum PSA measurement, so none introduces
+outcome leakage. The overview table below records the unit, data type, number
+of distinct values, and missing-value count for each variable.
+
+**Exclusions.** The project brief requires only that `lpsa` itself be removed
+from the predictor set, and permits a further exclusion only when a statistical
+reason is documented. We document none, so exactly one variable is excluded: the
+response. No candidate predictor is computed from `lpsa`: all `r length(predictors)`
+are measurements taken before surgery (tumour volume, prostate weight, age, benign
+hyperplasia, seminal vesicle invasion, capsular penetration, and the two Gleason
+summaries), and none uses PSA information in its definition.
+
+**Leakage rationale.** A variable computed from the response carries the answer
+inside the design matrix. Its least-squares coefficient would absorb nearly all
+explained variance, the training and cross-validation errors of every method
+would collapse toward zero, and the resulting model would fail on any new patient
+whose PSA is not yet known --- which is precisely the deployment situation. The
+comparison itself would also become meaningless: OLS, ridge, and lasso would all
+be fitting the same leaked signal, so differences between them would reflect how
+each penalty shrinks that one dominant column rather than how each method handles
+genuine multicollinearity among clinical predictors. Because none of the eight
+candidate predictors in `prostate.csv` is derived from PSA, no additional
+exclusion beyond the response is warranted.
+
+```{r data-overview}
+meaning <- c(
+  lcavol  = "Log cancer volume",
+  lweight = "Log prostate weight",
+  age     = "Age at diagnosis",
+  lbph    = "Log BPH amount",
+  svi     = "Seminal vesicle invasion",
+  lcp     = "Log capsular penetration",
+  gleason = "Gleason score",
+  pgg45   = "Percent Gleason grade 4/5",
+  lpsa    = "Log prostate-specific antigen"
+)
+unit <- c(
+  lcavol = "log cm3", lweight = "log g",   age   = "years",
+  lbph   = "log cm2", svi     = "0/1",     lcp   = "log cm",
+  gleason = "6 to 9", pgg45   = "percent", lpsa  = "log ng/mL"
+)
+
+# A column absent from the lookups would otherwise print as a silent blank cell.
+stopifnot(all(names(data_raw) %in% names(meaning)),
+          all(names(data_raw) %in% names(unit)))
+
+data_overview <- tibble(
+  Variable = names(data_raw),
+  Role     = ifelse(names(data_raw) == config$response, "Response", "Predictor"),
+  Meaning  = unname(meaning[names(data_raw)]),
+  Unit     = unname(unit[names(data_raw)]),
+  Type     = vapply(data_raw, function(x) class(x)[1L], character(1)),
+  Distinct = vapply(data_raw, dplyr::n_distinct, integer(1), na.rm = TRUE),
+  Missing  = vapply(data_raw, function(x) sum(is.na(x)), integer(1))
+)
+
+kable(
+  data_overview,
+  caption = paste("Response and candidate predictors, with the integrity checks",
+                  "run before the split.")
+)
+
+n_duplicate_rows <- sum(duplicated(analysis_data))
+```
+
+**Reading the table.** The file holds `r nrow(data_raw)` patients and
+`r ncol(data_raw)` columns. Three integrity results clear the way for the split.
+Every column is numeric, so the type guard above passes. No cell is missing
+(`Missing` is zero throughout), so no imputation is performed; the missing-value
+rule is still declared in 1B as a contingency, because a rule invented after
+seeing the data would be a decision made with holdout information. And
+`r n_duplicate_rows` rows are duplicated, so no patient is silently counted
+twice, which would otherwise inflate the apparent sample size and let the same
+record fall on both sides of the split. (`BPH` abbreviates benign prostatic
+hyperplasia, the non-cancerous prostate enlargement recorded by `lbph`.)
+
+The `Distinct` column carries the one substantive surprise. Two predictors are
+numeric but not continuous: `svi` takes only 2 values (a binary indicator of
+seminal vesicle invasion) and `gleason` only 4 (an ordinal biopsy score from 6 to
+9). We keep both on their numeric scale, which is the standard `glmnet`
+convention, but their coefficients must later be read with that discreteness in
+mind rather than as smooth slopes: a "one standard deviation" change in a binary
+variable is a convenient fiction, not a clinical intervention.
+
+The `Unit` column exposes the second issue. The predictors live on wildly
+different scales, from `pgg45` measured in percent (0 to 100) to several
+variables already on a log scale. Penalized regression shrinks coefficients
+toward zero, so a predictor measured in large units would be punished merely for
+its units, not for being uninformative. This is precisely why the design matrix
+is standardized in 1B, using centering and scaling constants computed on the
+training rows only.
 
 ## 1B. Split and train-only preprocessing
 
@@ -226,9 +385,145 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 ## 2A. OLS baseline
 
 ```{r ols}
-# Fit OLS on x_train and y_train. Do not access y_test here.
-ols <- lm(y_train ~ x_train)
+# Convert x_train (matrix) and y_train into a data frame for lm()
+train_data <- data.frame(y = y_train, x_train)
+
+# 1. Fit OLS on the training set
+ols_fit <- lm(y ~ ., data = train_data)
+
+# 2. Extract coefficients (tidy table via broom)
+ols_coefs <- broom::tidy(ols_fit)
+kable(
+  ols_coefs,
+  digits = 4,
+  caption = "OLS coefficient estimates on standardized training data."
+)
+
+# 3. R-squared and Adjusted R-squared from the model summary
+ols_summary <- summary(ols_fit)
+cat(sprintf("R-squared:          %.4f\n", ols_summary$r.squared))
+cat(sprintf("Adjusted R-squared: %.4f\n", ols_summary$adj.r.squared))
+
+# 4. Predict on the training set and evaluate training error
+ols_train_pred <- predict(ols_fit, newdata = train_data)
+ols_train_metrics <- score_regression(y = y_train, prediction = ols_train_pred)
+cat(sprintf("Training RMSE:      %.4f\n", ols_train_metrics["RMSE"]))
+cat(sprintf("Training MAE:       %.4f\n", ols_train_metrics["MAE"]))
+
+# 5. Five-fold CV error using the shared foldid with ridge/lasso
+#    (lm() has no built-in CV, so we compute it manually)
+K <- max(foldid)
+cv_mse_folds <- numeric(K)
+for (k in seq_len(K)) {
+  idx_train_k <- which(foldid != k)
+  idx_val_k   <- which(foldid == k)
+  fold_data   <- data.frame(y = y_train[idx_train_k], x_train[idx_train_k, , drop = FALSE])
+  fold_fit    <- lm(y ~ ., data = fold_data)
+  fold_pred   <- predict(fold_fit,
+                         newdata = data.frame(x_train[idx_val_k, , drop = FALSE]))
+  cv_mse_folds[k] <- mean((y_train[idx_val_k] - fold_pred)^2)
+}
+ols_cv_mse  <- mean(cv_mse_folds)
+ols_cv_rmse <- sqrt(ols_cv_mse)
+cat(sprintf("5-fold CV MSE:      %.4f\n", ols_cv_mse))
+cat(sprintf("5-fold CV RMSE:     %.4f\n", ols_cv_rmse))
 ```
+
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Observations exceeding the 4/n threshold (dashed line) are flagged as influential.", fig.height=4}
+# 6. Residual / influence diagnostic: Cook's distance
+cooks_d   <- cooks.distance(ols_fit)
+n_train   <- nrow(train_data)
+threshold <- 4 / n_train
+
+plot(cooks_d,
+     type = "h", lwd = 1.5, col = "steelblue",
+     ylab = "Cook's distance", xlab = "Observation index",
+     main = "Cook's Distance — OLS Baseline")
+abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
+text_idx <- which(cooks_d > threshold)
+if (length(text_idx)) {
+  text(text_idx, cooks_d[text_idx],
+       labels = text_idx, pos = 3, cex = 0.8, col = "firebrick")
+}
+cat(sprintf("Threshold (4/n):    %.4f\n", threshold))
+cat(sprintf("Influential points: %d of %d\n", length(text_idx), n_train))
+```
+
+```{r ols-helpers, echo=FALSE}
+# Helper functions to extract coefficient and p-value by term name
+ols_beta <- function(term) ols_coefs$estimate[ols_coefs$term == term]
+ols_pval <- function(term) ols_coefs$p.value[ols_coefs$term == term]
+
+# Compute lcavol–lcp correlation on training data (used in narrative)
+cor_lcavol_lcp <- cor(x_train[, "lcavol"], x_train[, "lcp"])
+
+# Identify non-significant predictors (p > 0.05, excluding intercept)
+nonsig_terms <- ols_coefs %>%
+  filter(term != "(Intercept)", p.value > 0.05) %>%
+  pull(term)
+nonsig_max_t <- ols_coefs %>%
+  filter(term %in% nonsig_terms) %>%
+  summarise(max_abs_t = max(abs(statistic))) %>%
+  pull(max_abs_t)
+nonsig_min_p <- ols_coefs %>%
+  filter(term %in% nonsig_terms) %>%
+  summarise(min_p = min(p.value)) %>%
+  pull(min_p)
+```
+
+**Model summary.** The OLS model is fitted on the `r nrow(x_train)`
+standardized training observations with all `r ncol(x_train)` predictors.
+Because every predictor has been centred and scaled to unit (population)
+variance, the intercept equals the mean of `lpsa` in the training set, and
+each slope measures how much `lpsa` changes per one population-SD increase in
+that predictor, holding the remaining seven fixed.
+
+**Coefficient interpretation.** Two predictors dominate.
+
+- `lcavol` carries the largest standardized coefficient
+  ($\hat{\beta} \approx `r round(ols_beta("lcavol"), 2)`$,
+  $p `r ifelse(ols_pval("lcavol") < 0.001, "< 0.001", sprintf("\\approx %.3f", ols_pval("lcavol")))`$),
+  confirming that log cancer volume is the single strongest linear predictor
+  of log PSA.
+- `svi` is the second-largest contributor
+  ($\hat{\beta} \approx `r round(ols_beta("svi"), 2)`$,
+  $p \approx `r round(ols_pval("svi"), 3)`$), indicating that seminal
+  vesicle invasion is associated with meaningfully higher PSA even after
+  adjusting for tumour volume.
+- `lweight` is marginally significant
+  ($p \approx `r round(ols_pval("lweight"), 3)`$); the remaining
+  `r length(nonsig_terms)` predictors
+  (`r paste0("\x60", nonsig_terms, "\x60", collapse = ", ")`) all have
+  $|t| < `r round(nonsig_max_t + 0.05, 1)`$ and
+  $p > `r round(nonsig_min_p - 0.01, 2)`$.
+
+**Collinearity concern.** The near-zero and sign-reversed coefficient for
+`lcp` ($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) is noteworthy:
+biologically, greater capsular penetration should correlate positively with
+PSA, and indeed the marginal correlation is positive. The sign flip in OLS is
+a classic symptom of multicollinearity --- `lcavol` and `lcp` are strongly
+correlated ($r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set),
+so OLS distributes their shared variance unevenly. Regularization in 2B--2C
+is expected to stabilize these shared-variance coefficients.
+
+**Cross-validation error.** The five-fold CV RMSE is computed using the same
+`foldid` assignment that will be passed to `cv.glmnet` for ridge and lasso,
+ensuring a like-for-like comparison. Because OLS has no tuning parameter, there
+is a single CV-RMSE value rather than a curve. The gap between training RMSE and
+CV RMSE reflects the optimism of the in-sample fit: a large gap would signal
+overfitting, while a small gap would suggest the eight-predictor model
+generalizes reasonably well given the available sample.
+
+**Influence diagnostic.** The Cook's distance plot flags observations whose
+removal would substantially shift the fitted coefficients. The conventional
+threshold $4/n$ is shown as a dashed line. Any point above this line has
+outsized leverage, large residual, or both. In a sample of only
+`r nrow(x_train)` training rows, even one or two influential points can
+destabilize an unpenalized fit --- particularly for the collinear predictors
+`lcavol`/`lcp` whose coefficient estimates are already fragile. These
+influential observations are retained in the analysis (not removed) because
+they are clinically valid patients; their effect is instead mitigated by the
+regularization introduced in 2B--2C.
 
 ## 2B. Ridge
 
