@@ -1,4 +1,5 @@
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
+*.Rproj.user
+*.Rhistory
+*.RData
+*.Ruserdata
+Group04_ProjectQuiz1.pdf
