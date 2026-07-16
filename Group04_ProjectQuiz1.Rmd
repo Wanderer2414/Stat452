@@ -392,34 +392,45 @@ foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
 
 ## 2A. OLS baseline
 
-```{r ols}
+```{r ols-fit}
 # Convert x_train (matrix) and y_train into a data frame for lm()
 train_data <- data.frame(y = y_train, x_train)
 
-# 1. Fit OLS on the training set
+# Fit ordinary least squares on the standardized training set
 ols_fit <- lm(y ~ ., data = train_data)
 
-# 2. Extract coefficients (tidy table via broom)
+# Tidy coefficient table (term, estimate, std.error, statistic, p.value)
 ols_coefs <- broom::tidy(ols_fit)
 kable(
   ols_coefs,
   digits = 4,
   caption = "OLS coefficient estimates on standardized training data."
 )
+```
 
-# 3. R-squared and Adjusted R-squared from the model summary
+**How to read this table.** Each row is one model term. `estimate` is a
+*standardized* slope: because every predictor was centred and scaled in 1B, it is
+the change in `lpsa` for a one standard-deviation increase in that predictor with
+the others held fixed, so the magnitudes are directly comparable down the column
+and the intercept equals the mean `lpsa` of the training set. The last three
+columns judge each estimate --- `std.error` is its standard error, `statistic` is
+the *t*-ratio (`estimate / std.error`), and `p.value` tests the null that the
+coefficient is zero, so a small value flags a predictor whose effect stands out
+from noise. Watch for any slope whose sign opposes the predictor's raw
+correlation with `lpsa`: that is an early fingerprint of the collinearity
+discussed below.
+
+```{r ols-metrics}
+# In-sample fit quality
 ols_summary <- summary(ols_fit)
-cat(sprintf("R-squared:          %.4f\n", ols_summary$r.squared))
-cat(sprintf("Adjusted R-squared: %.4f\n", ols_summary$adj.r.squared))
 
-# 4. Predict on the training set and evaluate training error
-ols_train_pred <- predict(ols_fit, newdata = train_data)
+# Training error (optimistic: the model has already seen these rows)
+ols_train_pred    <- predict(ols_fit, newdata = train_data)
 ols_train_metrics <- score_regression(y = y_train, prediction = ols_train_pred)
-cat(sprintf("Training RMSE:      %.4f\n", ols_train_metrics["RMSE"]))
-cat(sprintf("Training MAE:       %.4f\n", ols_train_metrics["MAE"]))
 
-# 5. Five-fold CV error using the shared foldid with ridge/lasso
-#    (lm() has no built-in CV, so we compute it manually)
+# Five-fold CV using the SAME foldid later passed to ridge and lasso.
+# lm() has no built-in CV, so refit on each four-fold training set and
+# score the held-out fold.
 K <- max(foldid)
 cv_mse_folds <- numeric(K)
 for (k in seq_len(K)) {
@@ -433,9 +444,33 @@ for (k in seq_len(K)) {
 }
 ols_cv_mse  <- mean(cv_mse_folds)
 ols_cv_rmse <- sqrt(ols_cv_mse)
-cat(sprintf("5-fold CV MSE:      %.4f\n", ols_cv_mse))
-cat(sprintf("5-fold CV RMSE:     %.4f\n", ols_cv_rmse))
+
+# Collect the fit and error numbers into one table
+ols_fit_summary <- tibble::tibble(
+  Quantity = c("R-squared", "Adjusted R-squared",
+               "Training RMSE", "Training MAE",
+               "5-fold CV RMSE", "5-fold CV MSE"),
+  Value = c(ols_summary$r.squared, ols_summary$adj.r.squared,
+            ols_train_metrics[["RMSE"]], ols_train_metrics[["MAE"]],
+            ols_cv_rmse, ols_cv_mse)
+)
+kable(
+  ols_fit_summary,
+  digits = 4,
+  caption = "OLS in-sample fit and five-fold cross-validation error on the shared folds."
+)
 ```
+
+**How to read this table.** The first two rows measure in-sample fit:
+`R-squared` is the fraction of training variance in `lpsa` the model explains,
+and `Adjusted R-squared` discounts it for the eight predictors so that adding an
+uninformative one cannot inflate the score. The lower rows are prediction error
+on the scale of `lpsa`: RMSE penalizes large misses (it is the square root of
+MSE), while MAE is the mean absolute error and is less sensitive to outliers.
+Training and five-fold CV error are listed together so they can be read side by
+side --- the training figures are optimistic because the model was scored on the
+same rows it was fitted on, and the cross-validation note below explains how the
+CV figure is built and what the gap between the two means.
 
 ```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Observations exceeding the 4/n threshold (dashed line) are flagged as influential.", fig.height=4}
 # 6. Residual / influence diagnostic: Cook's distance
@@ -514,13 +549,17 @@ correlated ($r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set),
 so OLS distributes their shared variance unevenly. Regularization in 2B--2C
 is expected to stabilize these shared-variance coefficients.
 
-**Cross-validation error.** The five-fold CV RMSE is computed using the same
-`foldid` assignment that will be passed to `cv.glmnet` for ridge and lasso,
-ensuring a like-for-like comparison. Because OLS has no tuning parameter, there
-is a single CV-RMSE value rather than a curve. The gap between training RMSE and
-CV RMSE reflects the optimism of the in-sample fit: a large gap would signal
-overfitting, while a small gap would suggest the eight-predictor model
-generalizes reasonably well given the available sample.
+**Cross-validation error.** The five-fold CV RMSE
+(`r round(ols_cv_rmse, 3)`) is computed using the same `foldid` assignment that
+will be passed to `cv.glmnet` for ridge and lasso, ensuring a like-for-like
+comparison. Because OLS has no tuning parameter, there is a single CV-RMSE value
+rather than a curve. It exceeds the training RMSE
+(`r round(ols_train_metrics[["RMSE"]], 3)`) by only about
+`r round(ols_cv_rmse - ols_train_metrics[["RMSE"]], 3)` on the log-PSA scale.
+This modest optimism gap reflects mild in-sample overfitting: it is small enough
+to suggest the `r ncol(x_train)`-predictor model already generalizes reasonably
+well on the `r nrow(x_train)`-row training sample, and 2B--2C will test whether
+shrinkage narrows the gap further.
 
 **Influence diagnostic.** The Cook's distance plot flags observations whose
 removal would substantially shift the fitted coefficients. The conventional
