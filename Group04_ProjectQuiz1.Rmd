@@ -305,7 +305,7 @@ The ridge objective function is
 $$
 Q_\lambda(b)
 =
-\frac1{2}\|y-Xb\|^2
+\frac1{2n}\|y-Xb\|^2
 +
 \frac{\lambda}{2}\|b\|^2.
 $$
@@ -315,7 +315,7 @@ Taking the gradient,
 $$
 \nabla Q_\lambda(b)
 =
-(X^TXb-X^Ty)
+\frac1{n}(X^TXb-X^Ty)
 +
 \lambda b.
 $$
@@ -329,9 +329,9 @@ $$
 Define
 
 $$
-G=X^TX,
+G=\frac1nX^TX,
 \qquad
-z=X^Ty.
+z=\frac1nX^Ty.
 $$
 
 Hence,
@@ -476,15 +476,15 @@ Lasso regression estimates the regression coefficients by minimizing
 $$
 Q_\lambda(b)
 =
-\|y-Xb\|^2
+\frac1{2n}\|y-Xb\|^2
 +
-\lambda\|b\|,
+\lambda\|b\|_1,
 $$
 
 where
 
 $$
-\|b\|
+\|b\|_1
 =
 \sum_{j=1}^{p}|b_j|,
 $$
@@ -498,13 +498,19 @@ Unlike ridge regression, the \(L_1\)-norm contains the absolute value function, 
 Assume that the predictors have been centered, standardized, and satisfy the orthonormal design condition
 
 $$
-X^TX=I.
+\frac1nX^TX=I.
+$$
+
+Equivalently,
+
+$$
+X^TX=nI.
 $$
 
 Define
 
 $$
-z=X^Ty.
+z=\frac1nX^Ty.
 $$
 
 The squared error term can be expanded as
@@ -517,10 +523,35 @@ $$
 \end{aligned}
 $$
 
+Substituting into the objective function,
+
+$$
+\begin{aligned}
+Q_\lambda(b)
+&=
+\frac1{2n}
+\left(
+y^Ty
+-
+2b^TX^Ty
++
+b^TX^TXb
+\right)
++
+\lambda\sum_{j=1}^{p}|b_j|.
+\end{aligned}
+$$
+
 Using
 
 $$
-X^TX=I,
+X^TX=nI
+$$
+
+and
+
+$$
+z=\frac1nX^Ty,
 $$
 
 the objective becomes
@@ -540,7 +571,7 @@ $$
 where
 
 $$
-C=y^Ty
+C=\frac1{2n}y^Ty
 $$
 
 is a constant independent of \(b\).
