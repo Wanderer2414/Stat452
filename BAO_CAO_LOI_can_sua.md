@@ -20,6 +20,7 @@
 | 10 | Placeholder template còn lộ trong PDF | Toàn bài | 🟡 Nhỏ |
 | 11 | Hình ở 1C thiếu nhãn/caption | 1C | 🟡 Nhỏ |
 | 12 | Lỗi vặt: dấu `*` thừa, đoạn văn trùng, chunk không tên | 2B, 2C | 🟡 Nhỏ |
+| 13 | Kết luận VIF ở 1C sai + tự mâu thuẫn, chọi với 2A | 1C | 🟠 Vừa |
 
 ---
 
@@ -156,6 +157,46 @@ trong file đó (đã có seed cố định nên tái lập được).
 
 **Cách sửa:** Xóa dòng 376.
 
+### 13. Kết luận VIF ở 1C sai, tự mâu thuẫn, và chọi với 2A
+
+**Vị trí:** Problem 1C, đoạn ngay dưới chunk `eda-vif` (~dòng 484).
+
+**Nguyên văn hiện tại:**
+> "There is **no significant multicollinearity** present in this model. Because all
+> VIF values are safely below 5, the independent variables are **not highly
+> correlated with one another**. The regression model's coefficient estimates are
+> **mathematically stable**, and no variables need to be dropped or transformed."
+
+**Ba vấn đề:**
+
+1. **"Coefficient estimates are mathematically stable" là SAI.** Chính 2A chứng minh
+   ngược lại: hệ số của `lcp` **đổi dấu** (β̂ ≈ −0.04) dù tương quan biên của `lcp`
+   với `lpsa` là dương (+0.59). Đó đúng là định nghĩa của hệ số *không* ổn định.
+
+2. **"Not highly correlated with one another" mâu thuẫn với chính 1C.** Đoạn
+   correlation phía trên (~dòng 409) tự viết: *"some stronger positive correlations
+   were observed, particularly between gleason and pgg45 (r = 0.78), lcavol and lcp
+   (r = 0.68), and svi and lcp (r = 0.69)"*. Không thể vừa nói có tương quan mạnh
+   vừa nói "không tương quan cao".
+
+3. **Chọi với 2A.** 2A kết luận đa cộng tuyến **vừa phải** (VIF max 3.35 < 5) nhưng
+   vẫn đủ lật dấu `lcp`. Người chấm đọc liền 1C → 2A sẽ thấy hai mục nói ngược nhau.
+
+**Lý do đúng về mặt thống kê:** VIF < 5 chỉ nói **không có biến nào cần loại bỏ** —
+nó **không** bảo đảm mọi hệ số đều ổn định. Một biến gần như không có tín hiệu riêng
+(`lcp` có p ≈ 0.78) vẫn có thể bị lật dấu chỉ với đa cộng tuyến vừa phải, vì sau khi
+`lcavol` hút hết phần phương sai chung thì phần còn lại của `lcp` gần như là nhiễu.
+
+**Cách sửa (gợi ý viết lại):**
+> "All VIF values are below the conventional threshold of 5 (largest: pgg45 at 3.35,
+> lcp at 3.29), so multicollinearity is **moderate rather than severe** and no
+> variable needs to be dropped. Moderate collinearity is nevertheless enough to
+> destabilize an individual coefficient when a predictor carries little independent
+> signal — 2A shows exactly this for `lcp`, whose sign flips. This is the instability
+> that ridge and lasso are expected to control."
+
+Sửa xong thì 1C và 2A khớp nhau và cùng dọn đường cho 3A.
+
 ---
 
 ## 🟡 LỖI NHỎ — dọn dẹp / chất lượng
@@ -195,6 +236,13 @@ Nên đặt `main=`, `xlab=`, và thêm `fig.cap=` cho các chunk hình.
 
 ## Gợi ý thứ tự sửa
 1. Sửa #2, #3, #6, #7 trước (rõ ràng, nhanh, ít tranh cãi).
-2. Sửa #1 + #4 cùng nhau (đều về condition number / định nghĩa G) — quan trọng nhất về nội dung.
+2. Sửa #1 + #4 + #13 cùng nhau — cả ba đều xoay quanh "ridge/đa cộng tuyến giúp được
+   bao nhiêu", và hiện đang kết luận sai hoặc chọi nhau. Đây là nhóm quan trọng nhất
+   về nội dung.
 3. #5 khi bắt đầu làm 3C.
 4. #8–#12 dọn cuối, trước khi nộp.
+
+> **Ghi chú:** phần 1A và 2A đã được rà và sửa xong (số liệu tự tính bằng inline R,
+> bỏ đoạn lặp, Cook's distance dán nhãn theo dòng gốc và nối với anomaly `lweight`
+> của 1C, bảng metrics có thêm CV SE). 2A hiện đã mô tả đa cộng tuyến ở mức **vừa
+> phải** và dẫn lại bảng VIF của 1C — nên sau khi sửa #13, hai mục sẽ khớp nhau.

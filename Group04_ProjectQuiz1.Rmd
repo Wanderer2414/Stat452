@@ -187,6 +187,9 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
 ## 1A. Target and predictors
 
 ```{r data-configuration}
+# The brief assigns prostate.csv to even-numbered groups.
+stopifnot(group_number %% 2L == 0L)
+
 config <- list(
   file = "prostate.csv",
   response = "lpsa",
@@ -200,8 +203,6 @@ if (anyNA(analysis_data)) stop("Declare a training-only missing-value plan.")
 if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
   stop("The assigned response and predictors must be numeric.")
 }
-
-
 ```
 
 **Assignment.** Group 04 is even-numbered, so the assigned dataset is
@@ -212,11 +213,9 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 (PSA) levels and several clinical and histological measurements in men with
 clinically localized prostate cancer who underwent radical prostatectomy. The
 dataset contains `r nrow(data_raw)` observations and `r ncol(data_raw)` variables
---- one continuous response (`lpsa`) and eight candidate predictors covering
-tumour characteristics, patient demographics, and biopsy summaries. All variables
-are numeric and the dataset has no missing values, so no imputation or factor
-encoding is required. Individual variable definitions are detailed in the overview
-table below.
+--- one continuous response (`lpsa`) and `r length(predictors)` candidate
+predictors covering tumour characteristics, patient demographics, and biopsy
+summaries.
 
 **Response.** `lpsa` is the natural logarithm of prostate-specific antigen
 (ng/mL), a continuous serum marker measured before surgery. It is modelled on
@@ -235,10 +234,8 @@ lasso trade prediction error against coefficient stability and interpretability
 when several predictors are correlated.
 
 **Candidate predictors.** All `r length(predictors)` remaining variables are
-retained as candidate predictors. Every one is numeric, so the template's type
-guard passes and the design matrix needs no factor encoding. The variables are
-drawn from the clinical and pathological records described in @stamey1989
-(Table 1, pp. 1077--1078) and are summarized below.
+retained as candidate predictors. They are drawn from the clinical and
+pathological records described in @stamey1989:
 
 - `lcavol` --- log of cancer volume (log cm$^3$), estimated by ultrasound
   before surgery. Larger tumours are expected to produce more PSA.
@@ -261,11 +258,6 @@ drawn from the clinical and pathological records described in @stamey1989
   (percent, 0--100). Higher values indicate a larger proportion of
   poorly-differentiated, aggressive tumour tissue.
 
-All eight predictors were recorded before or during the prostatectomy procedure
-and are defined independently of the serum PSA measurement, so none introduces
-outcome leakage. The overview table below records the unit, data type, number
-of distinct values, and missing-value count for each variable.
-
 **Exclusions.** The project brief requires only that `lpsa` itself be removed
 from the predictor set, and permits a further exclusion only when a statistical
 reason is documented. We document none, so exactly one variable is excluded: the
@@ -282,9 +274,9 @@ whose PSA is not yet known --- which is precisely the deployment situation. The
 comparison itself would also become meaningless: OLS, ridge, and lasso would all
 be fitting the same leaked signal, so differences between them would reflect how
 each penalty shrinks that one dominant column rather than how each method handles
-genuine multicollinearity among clinical predictors. Because none of the eight
-candidate predictors in `prostate.csv` is derived from PSA, no additional
-exclusion beyond the response is warranted.
+genuine multicollinearity among clinical predictors. Because none of the
+`r length(predictors)` candidate predictors in `prostate.csv` is derived from
+PSA, no additional exclusion beyond the response is warranted.
 
 ```{r data-overview}
 meaning <- c(
@@ -329,10 +321,12 @@ n_duplicate_rows <- sum(duplicated(analysis_data))
 
 **Reading the table.** The file holds `r nrow(data_raw)` patients and
 `r ncol(data_raw)` columns. Three integrity results clear the way for the split.
-Every column is numeric, so the type guard above passes. No cell is missing
-(`Missing` is zero throughout), so no imputation is performed; the missing-value
-rule is still declared in 1B as a contingency, because a rule invented after
-seeing the data would be a decision made with holdout information. And
+Every column is numeric, so the type guard above passes and the design matrix
+needs no factor encoding. No cell is missing (`Missing` is zero throughout), so
+no imputation is performed; the contingency rule was nevertheless fixed in
+advance --- median imputation with medians computed on the training rows only ---
+because a rule invented after seeing the data would be a decision taken with
+holdout information. And
 `r n_duplicate_rows` rows are duplicated, so no patient is silently counted
 twice, which would otherwise inflate the apparent sample size and let the same
 record fall on both sides of the split. (`BPH` abbreviates benign prostatic
@@ -578,14 +572,19 @@ for (k in seq_len(K)) {
 ols_cv_mse  <- mean(cv_mse_folds)
 ols_cv_rmse <- sqrt(ols_cv_mse)
 
+# Standard error of the CV-MSE across folds. cv.glmnet reports the same quantity
+# as `cvsd` for ridge and lasso, so 2D can compare all three on equal footing.
+ols_cv_se <- sd(cv_mse_folds) / sqrt(K)
+
 # Collect the fit and error numbers into one table
 ols_fit_summary <- tibble::tibble(
   Quantity = c("R-squared", "Adjusted R-squared",
                "Training RMSE", "Training MAE",
-               "5-fold CV RMSE", "5-fold CV MSE"),
+               "5-fold CV RMSE", "5-fold CV MSE",
+               "5-fold CV SE (of MSE)"),
   Value = c(ols_summary$r.squared, ols_summary$adj.r.squared,
             ols_train_metrics[["RMSE"]], ols_train_metrics[["MAE"]],
-            ols_cv_rmse, ols_cv_mse)
+            ols_cv_rmse, ols_cv_mse, ols_cv_se)
 )
 kable(
   ols_fit_summary,
@@ -596,33 +595,39 @@ kable(
 
 **How to read this table.** The first two rows measure in-sample fit:
 `R-squared` is the fraction of training variance in `lpsa` the model explains,
-and `Adjusted R-squared` discounts it for the eight predictors so that adding an
-uninformative one cannot inflate the score. The lower rows are prediction error
+and `Adjusted R-squared` discounts it for the `r ncol(x_train)` predictors so
+that adding an uninformative one cannot inflate the score. The lower rows are prediction error
 on the scale of `lpsa`: RMSE penalizes large misses (it is the square root of
 MSE), while MAE is the mean absolute error and is less sensitive to outliers.
 Training and five-fold CV error are listed together so they can be read side by
 side --- the training figures are optimistic because the model was scored on the
 same rows it was fitted on, and the cross-validation note below explains how the
-CV figure is built and what the gap between the two means.
+CV figure is built and what the gap between the two means. The last row is the
+standard error of the CV-MSE across the five folds: it measures how precisely the
+CV error itself is pinned down, and `cv.glmnet` reports the same quantity
+(`cvsd`) for ridge and lasso, so 2D can compare all three methods with their
+error bars rather than by bare point estimates.
 
-```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Observations exceeding the 4/n threshold (dashed line) are flagged as influential.", fig.height=4}
-# 6. Residual / influence diagnostic: Cook's distance
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4}
+# Residual / influence diagnostic: Cook's distance
 cooks_d   <- cooks.distance(ols_fit)
 n_train   <- nrow(train_data)
 threshold <- 4 / n_train
 
+# Flagged points are labelled by their ORIGINAL row in prostate.csv (via train_id)
+# so a flagged patient can be traced back to the raw data.
+flagged_pos <- which(cooks_d > threshold)
+flagged_row <- train_id[flagged_pos]
+
 plot(cooks_d,
      type = "h", lwd = 1.5, col = "steelblue",
-     ylab = "Cook's distance", xlab = "Observation index",
+     ylab = "Cook's distance", xlab = "Training observation index",
      main = "Cook's Distance — OLS Baseline")
 abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
-text_idx <- which(cooks_d > threshold)
-if (length(text_idx)) {
-  text(text_idx, cooks_d[text_idx],
-       labels = text_idx, pos = 3, cex = 0.8, col = "firebrick")
+if (length(flagged_pos)) {
+  text(flagged_pos, cooks_d[flagged_pos],
+       labels = flagged_row, pos = 3, cex = 0.8, col = "firebrick")
 }
-cat(sprintf("Threshold (4/n):    %.4f\n", threshold))
-cat(sprintf("Influential points: %d of %d\n", length(text_idx), n_train))
 ```
 
 ```{r ols-helpers, echo=FALSE}
@@ -632,6 +637,22 @@ ols_pval <- function(term) ols_coefs$p.value[ols_coefs$term == term]
 
 # Compute lcavol–lcp correlation on training data (used in narrative)
 cor_lcavol_lcp <- cor(x_train[, "lcavol"], x_train[, "lcp"])
+
+# Quantify collinearity from this fit. VIF is scale-invariant, so standardizing
+# in 1B leaves it unchanged and these values match the VIF table reported in 1C.
+ols_vif      <- car::vif(ols_fit)
+max_vif      <- max(ols_vif)
+max_vif_term <- names(which.max(ols_vif))
+
+# Locate the most influential patient, and the heavy-prostate anomaly 1C flagged,
+# both reported by their original prostate.csv row number.
+n_flagged   <- length(flagged_pos)
+top_pos     <- flagged_pos[which.max(cooks_d[flagged_pos])]
+top_row     <- train_id[top_pos]
+lweight_pos <- which.max(train_df$lweight)   # the log-weight outlier seen in 1C
+lweight_row <- train_id[lweight_pos]
+lweight_g   <- exp(train_df$lweight[lweight_pos])
+lweight_is_flagged <- lweight_pos %in% flagged_pos
 
 # Identify non-significant predictors (p > 0.05, excluding intercept)
 nonsig_terms <- ols_coefs %>%
@@ -647,14 +668,12 @@ nonsig_min_p <- ols_coefs %>%
   pull(min_p)
 ```
 
-**Model summary.** The OLS model is fitted on the `r nrow(x_train)`
-standardized training observations with all `r ncol(x_train)` predictors.
-Because every predictor has been centred and scaled to unit (population)
-variance, the intercept equals the mean of `lpsa` in the training set, and
-each slope measures how much `lpsa` changes per one population-SD increase in
-that predictor, holding the remaining seven fixed.
+**Model summary.** The OLS model is fitted on the `r nrow(x_train)` standardized
+training observations using all `r ncol(x_train)` candidate predictors, with no
+penalty and no variable selection. It is therefore the unregularized baseline
+against which ridge and lasso are judged in 2B--2C.
 
-**Coefficient interpretation.** Two predictors dominate.
+**Coefficient interpretation.** Two predictors dominate, and one is borderline.
 
 - `lcavol` carries the largest standardized coefficient
   ($\hat{\beta} \approx `r round(ols_beta("lcavol"), 2)`$,
@@ -673,14 +692,22 @@ that predictor, holding the remaining seven fixed.
   $|t| < `r round(nonsig_max_t + 0.05, 1)`$ and
   $p > `r round(nonsig_min_p - 0.01, 2)`$.
 
-**Collinearity concern.** The near-zero and sign-reversed coefficient for
-`lcp` ($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) is noteworthy:
-biologically, greater capsular penetration should correlate positively with
-PSA, and indeed the marginal correlation is positive. The sign flip in OLS is
-a classic symptom of multicollinearity --- `lcavol` and `lcp` are strongly
-correlated ($r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set),
-so OLS distributes their shared variance unevenly. Regularization in 2B--2C
-is expected to stabilize these shared-variance coefficients.
+**Collinearity concern.** The near-zero and sign-reversed coefficient for `lcp`
+($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) deserves comment:
+biologically, greater capsular penetration should go with higher PSA, and its
+marginal correlation with `lpsa` is indeed positive. The collinearity behind the
+flip is *moderate rather than severe* --- the largest variance inflation factor
+is `r round(max_vif, 2)` (`r max_vif_term`) and `lcp`'s own is
+`r round(ols_vif[["lcp"]], 2)`, both comfortably below the conventional threshold
+of 5, consistent with the VIF table reported in 1C. Moderate sharing is still
+enough to flip *this particular* sign, because `lcp` carries almost no
+independent signal of its own: it is correlated with `lcavol` at
+$r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set, so once `lcavol`
+has absorbed the shared variance what remains for `lcp` is close to noise
+($p \approx `r round(ols_pval("lcp"), 2)`$) and its sign is essentially free to
+move. Following the brief, this evidence is reported rather than removed; ridge
+and lasso in 2B--2C are expected to stabilize exactly these shared-variance
+coefficients.
 
 **Cross-validation error.** The five-fold CV RMSE
 (`r round(ols_cv_rmse, 3)`) is computed using the same `foldid` assignment that
@@ -694,16 +721,40 @@ to suggest the `r ncol(x_train)`-predictor model already generalizes reasonably
 well on the `r nrow(x_train)`-row training sample, and 2B--2C will test whether
 shrinkage narrows the gap further.
 
-**Influence diagnostic.** The Cook's distance plot flags observations whose
-removal would substantially shift the fitted coefficients. The conventional
-threshold $4/n$ is shown as a dashed line. Any point above this line has
-outsized leverage, large residual, or both. In a sample of only
-`r nrow(x_train)` training rows, even one or two influential points can
-destabilize an unpenalized fit --- particularly for the collinear predictors
-`lcavol`/`lcp` whose coefficient estimates are already fragile. These
-influential observations are retained in the analysis (not removed) because
-they are clinically valid patients; their effect is instead mitigated by the
-regularization introduced in 2B--2C.
+That single CV number is itself an average of `r K` noisy pieces. The per-fold
+MSE ranges from `r round(min(cv_mse_folds), 2)` to `r round(max(cv_mse_folds), 2)`
+around a mean of `r round(ols_cv_mse, 2)`, giving a standard error of
+`r round(ols_cv_se, 3)`. With only about `r round(nrow(x_train) / K)` patients in
+each held-out fold that spread is unsurprising, but it fixes the resolution of
+every comparison that follows: two methods whose CV-MSE differ by less than
+roughly one standard error are not distinguishable on this evidence, and 2D must
+weigh the ridge and lasso results against that yardstick rather than declare a
+winner on a bare point estimate.
+
+**Influence diagnostic.** Cook's distance asks how far the whole fitted
+coefficient vector would move if one patient were deleted, so it combines a large
+residual and high leverage into a single number. Against the conventional
+threshold $4/n \approx `r round(threshold, 3)`$, `r n_flagged` of the
+`r n_train` training patients are flagged, the most influential being original
+row `r top_row` (Cook's $D \approx `r round(max(cooks_d), 2)`$).
+
+This connects the exploratory work in 1C to the fit. The heavy-prostate anomaly
+singled out there --- original row `r lweight_row`, whose prostate weight of
+`r round(lweight_g)` g (log `r round(train_df$lweight[lweight_pos], 2)`) is far
+above every other patient while its `lpsa` is only
+`r round(train_df$lpsa[lweight_pos], 2)` --- is
+`r if (lweight_is_flagged) "indeed among the flagged points" else "not flagged"`,
+with Cook's $D \approx `r round(cooks_d[lweight_pos], 2)`$. The oddity spotted in
+the plots therefore measurably moves the unpenalized fit rather than being merely
+cosmetic. In a sample of only `r nrow(x_train)` rows, such points bend
+coefficients easily --- especially for the collinear pair `lcavol`/`lcp`, whose
+estimates are already fragile.
+
+All flagged observations are retained rather than removed: they are clinically
+valid patients, and the brief requires the evidence to be explained rather than
+deleted. Their leverage is instead absorbed by the shrinkage introduced in
+2B--2C, which is one of the concrete things the regularized fits are expected to
+improve.
 
 ## 2B. Ridge
 
