@@ -1,0 +1,91 @@
+---
+title: "Problem 4b"
+output:
+  pdf_document: default
+---
+# Setup helper functions
+```{r setup}
+
+source("utils.R")
+library(car)
+library(lars)
+library(glmnet)
+```
+
+
+# Elastic net fitting across alpha
+
+```{r original-elastic-net}
+alpha_grid <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+# Fitting
+elastic_fits <- lapply(alpha_grid, function(a) {
+  fit_cv_glmnet(x = x_train, y = y_train, alpha = a, foldid = foldid)
+})
+names(elastic_fits) <- paste0("alpha_", alpha_grid)
+
+par(mfrow = c(2,3))
+for (i in seq_along(alpha_grid)) {
+  plot(elastic_fits[[i]], main = paste("alpha =", alpha_grid[i]))
+}
+```
+
+The grid of plots above illustrates the results of the 5-fold cv process used to evaluate the MSE of elastic net models across five different values of $\alpha \in \{0.1, 0.25, 0.5, 0.75, 0.9\}$.
+
+Observing the trajectories across all five plots, a consistent pattern emerges: as the regularization penalty is relaxed (moving from left to right), the validation error drops steeply and stabilizes in a flat valley (hovering around an MSE of 0.6). Regarding model sparsity, at the $\lambda_{\text{min}}$ threshold, the models tend to retain about 7 to 8 predictors. However, applying the more stringent $\lambda_{\text{1se}}$ rule shrinks the model significantly, isolating only 3 to 4 core features.
+
+Visually, the differences in the performance valleys among the various $\alpha$ levels—from the Ridge-heavy $\alpha=0.1$ to the Lasso-heavy $\alpha=0.9$—are marginal. Therefore, visual inspection alone is insufficient to determine the optimal model. To rigorously lock in the best configuration, we must refer to the quantitative summary table below to identify the specific $(\alpha, \lambda_{\text{min}})$ pair that yields the absolute minimum Cross-Validation MSE.
+
+```{r elastic-sum}
+elastic_summary <- map_dfr(seq_along(alpha_grid), function(i) {
+  a   <- alpha_grid[i]
+  fit <- elastic_fits[[i]]
+
+  tibble(
+    alpha        = a,
+    lambda_min   = fit$lambda.min,
+    lambda_1se   = fit$lambda.1se,
+    cv_mse_min   = fit$cvm[fit$lambda == fit$lambda.min],
+    cv_mse_1se   = fit$cvm[fit$lambda == fit$lambda.1se],
+    nonzero_min  = count_nonzero(fit, s = "lambda.min"),
+    nonzero_1se  = count_nonzero(fit, s = "lambda.1se")
+  )
+})
+
+knitr::kable(
+  elastic_summary,
+  digits  = 4,
+  caption = "Elastic net cross-validation summary across alpha"
+)
+```
+
+Based on the quantitative summary table above, we can objectively determine the optimal hyperparameters for our Elastic Net model. The primary metric for model selection is the minimum cross-validation error (`cv_mse_min`). 
+
+As the mixing parameter $\alpha$ increases from 0.10 (Ridge-dominant) to 0.90 (Lasso-dominant), the predictive error steadily decreases. The absolute lowest Mean-Squared Error ($0.5804$) is achieved at **$\alpha = 0.90$** with **$\lambda_{\text{min}} = 0.0902$**. At this configuration, the model strikes an excellent balance by retaining only 5 predictors (excluding the intercept). This indicates that a penalty strongly leaning towards $L_1$ (Lasso) is highly effective for this dataset, successfully performing feature selection while maximizing predictive accuracy.
+
+Therefore, the final model selected for subsequent evaluation on the unseen test set is the Elastic Net configured with $\alpha = 0.90$ and evaluated at $\lambda = 0.0902$.
+
+
+```{r elastic-coef-path}
+## coefficient path
+par(mfrow = c(2,3))
+for (i in seq_along(alpha_grid)) {
+  a   <- alpha_grid[i]
+  fit <- elastic_fits[[i]]$glmnet.fit 
+
+  plot(fit, xvar = "lambda", label = TRUE,
+       main = paste("alpha =", a))
+  legend("topleft", legend = rownames(fit$beta),
+         col = 1:nrow(fit$beta), lty = 1, cex = 0.7, lwd = 2,
+         title = "Predictors")
+}
+```
+1. The Impact of Alpha:
+By comparing the grid of plots, we can visually trace the transition from a Ridge-dominant penalty to a Lasso-dominant penalty:
+* Ridge-like behavior ($\alpha = 0.1$): The coefficient paths are smooth and curved. Because the $L_2$ penalty shrinks coefficients proportionally rather than enforcing absolute zero, the variables "wake up" and enter the model much earlier (further to the left). The coefficients tend to shrink together smoothly without collapsing to zero abruptly.
+* Lasso-like behavior ($\alpha = 0.9$): The paths exhibit sharper, piecewise-linear trajectories. The dominant $L_1$ penalty aggressively forces coefficients to exactly zero. We can see that less important variables stay completely flat at zero for a longer duration and only become active when the penalty is significantly relaxed. This visually confirms the stronger feature selection property of higher $\alpha$ values.
+
+2. Consistency of Predictor Importance:
+Despite the structural differences dictated by $\alpha$, the hierarchy of predictor importance remains remarkably consistent across all models:
+* **`lcavol`** (black line) is universally the most dominant predictor. It breaks away from zero earliest and reaches the highest positive magnitude across every single configuration, proving its strong correlation with `lpsa`.
+* **`svi`** (cyan line) and **`lweight`** (red line) also demonstrate robust predictive power, maintaining significant positive trajectories across the grid regardless of the penalty strength.
+* Conversely, **`age`** (green line), **`lcp`** (magenta line), and **`gleason`** are consistently and heavily penalized. They remain at or near zero for a much wider range of $\lambda$, confirming that they add marginal predictive value and are prime candidates for elimination in the final sparse model.
