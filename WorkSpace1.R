@@ -1,0 +1,224 @@
+rm(list=ls())
+library(tidyverse)
+library(glmnet)
+library(broom)
+library(knitr)
+library(patchwork)
+
+params <- list(group_number = 04)
+
+group_number <- as.integer(params$group_number)
+# Seed
+seeds <- list(
+  split = 240200L + group_number,
+  cv = 240300L + group_number,
+  features = 240400L + group_number
+)
+# Functions
+find_exam_data <- function(filename) {
+  input <- knitr::current_input(dir = TRUE)
+  input_dir <- if (length(input) && nzchar(input)) dirname(input) else getwd()
+  candidates <- c(
+    file.path(input_dir, "data", filename),
+    file.path(input_dir, "..", "data", filename),
+    file.path(getwd(), "data", filename)
+  )
+  existing <- candidates[file.exists(candidates)]
+  if (!length(existing)) stop("Cannot locate ", filename, " by a relative path.")
+  hits <- unique(normalizePath(existing, winslash = "/", mustWork = TRUE))
+  if (length(hits) > 1L && length(unique(unname(tools::md5sum(hits)))) > 1L) {
+    stop("Multiple nonidentical copies of ", filename, " were found.")
+  }
+  hits[[1L]]
+}
+split_rows <- function(n, train_prop = 0.80, seed) {
+  stopifnot(n >= 10L, train_prop > 0, train_prop < 1)
+  set.seed(seed)
+  train <- sort(sample.int(n, floor(train_prop * n), replace = FALSE))
+  list(train = train, test = setdiff(seq_len(n), train))
+}
+fit_scaler <- function(x, tol = 1e-12) {
+  x <- as.matrix(x)
+  center <- colMeans(x)
+  centered <- sweep(x, 2L, center, "-")
+  scale <- sqrt(colMeans(centered^2))
+  keep <- is.finite(scale) & scale > tol
+  if (!any(keep)) stop("No nonconstant training predictor remains.")
+  list(
+    center = center[keep],
+    scale = scale[keep],
+    keep = keep,
+    dropped = colnames(x)[!keep]
+  )
+}
+apply_scaler <- function(x, prep) {
+  x <- as.matrix(x)[, prep$keep, drop = FALSE]
+  x <- sweep(x, 2L, prep$center, "-")
+  sweep(x, 2L, prep$scale, "/")
+}
+make_foldid <- function(n, k = 5L, seed) {
+  if (k < 3L || k > n) stop("Require 3 <= k <= number of training rows.")
+  set.seed(seed)
+  sample(rep(seq_len(k), length.out = n))
+}
+fit_cv_glmnet <- function(x, y, alpha, foldid) {
+  glmnet::cv.glmnet(
+    x = x,
+    y = y,
+    family = "gaussian",
+    alpha = alpha,
+    foldid = foldid,
+    standardize = FALSE,
+    intercept = TRUE,
+    type.measure = "mse"
+  )
+}
+score_regression <- function(y, prediction) {
+  y <- as.numeric(y)
+  prediction <- as.numeric(prediction)
+  if (length(y) != length(prediction) || any(!is.finite(c(y, prediction)))) {
+    stop("Metrics require equal-length finite vectors.")
+  }
+  c(RMSE = sqrt(mean((y - prediction)^2)),
+    MAE = mean(abs(y - prediction)))
+}
+count_nonzero <- function(fit, s = "lambda.min", tol = 1e-8) {
+  b <- as.matrix(stats::coef(fit, s = s))
+  slopes <- b[rownames(b) != "(Intercept)", 1L]
+  sum(abs(slopes) > tol)
+}
+safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
+  eigenvalues <- eigen(
+    crossprod(x) / nrow(x),
+    symmetric = TRUE,
+    only.values = TRUE
+  )$values
+  largest <- max(eigenvalues)
+  smallest <- max(min(eigenvalues), 0)
+  cutoff <- tol * max(1, largest)
+  c(
+    gram = if (smallest <= cutoff) Inf else largest / smallest,
+    ridge = (largest + lambda) / (smallest + lambda)
+  )
+}
+
+# 
+config <- list(
+  file = "prostate.csv",
+  response = "lpsa",
+  excluded = "lpsa"
+)
+data_raw <- read.csv(find_exam_data(config$file), check.names = FALSE)
+predictors <- setdiff(names(data_raw), config$excluded)
+analysis_data <- data_raw[, c(config$response, predictors), drop = FALSE]
+
+if (anyNA(analysis_data)) stop("Declare a training-only missing-value plan.")
+if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
+  stop("The assigned response and predictors must be numeric.")
+}
+
+# Split
+split <- split_rows(nrow(analysis_data), seed = seeds$split)
+train_id <- split$train
+test_id <- split$test
+
+x_raw <- as.matrix(analysis_data[, predictors, drop = FALSE])
+y_raw <- analysis_data[[config$response]]
+
+# Train/Test
+x_prep <- fit_scaler(x_raw[train_id, , drop = FALSE])
+x_train <- apply_scaler(x_raw[train_id, , drop = FALSE], x_prep)
+x_test <- apply_scaler(x_raw[test_id, , drop = FALSE], x_prep)
+y_train <- y_raw[train_id]
+y_test <- y_raw[test_id]
+
+# Folds
+foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
+
+y_raw <- data.frame(y = y_train)
+y_scale <- scale(y_raw)
+
+x_train[,predictors[1]]
+
+# Summary on predictor
+
+par(mfrow = c(3, 3))
+for (i in 1:length(predictors))
+{
+  data <- scale(as.numeric(x_train[,predictors[i]]))
+  hist(data, breaks = seq(floor(min(data)), ceiling(max(data)), by=0.5), main="Distribution of Response", xlab=predictors[i], col="lightblue")
+}
+
+#
+p <- list()
+n <- length(predictors)
+for (i in 1:(n-1)) {
+  p[[i]] <- list()
+  for (j in (i+1):n) {
+    data <- data.frame(
+      x = x_train[,predictors[i]],
+      y = x_train[,predictors[j]]
+    )
+    p[[i]][[j]] <- ggplot(data, aes(x = x, y = y)) + geom_point(size=1)
+  }
+}
+
+# 
+par(mfrow = c(1,1))
+lweight_data <- as.numeric(x_train[,"lweight"])
+hist(lweight_data, breaks = seq(floor(min(lweight_data)), ceiling(max(lweight_data)), by=0.5), main="Distribution of Response", xlab=predictors[i], col="lightblue")
+boxplot(lweight_data)
+
+# Response distribution
+hist(y_scale, breaks = seq(floor(min(y_scale)), ceiling(max(y_scale)), by=0.6), main="Distribution of Response", xlab="Response Variable", col="lightblue")
+
+# OLS
+par(mfrow(2,2))
+data <- data.frame(
+  x = x_train[,predictors[1]],
+  y = y_train
+)
+
+par(mfrow=c(2,2))
+ols <- lm(y_train~x_train)
+plot(ols)
+summary(ols)
+
+data$y_s <- fitted(ols)
+
+ggplot(data=data, aes(x=x, y=y)) +
+  geom_point(size=1) +
+  geom_line(aes(y = y_s))
+
+summary(ols)
+
+g <- crossprod(x_train)
+e <- eigen(g, symmetric = TRUE)
+k <- abs(max(e$values))/abs(min(e$values))
+k
+
+# Ridge
+
+x <- as.matrix(x_train)
+y <- as.numeric(y_train)
+ridge$lambda.1se
+ridge <- cv.glmnet(x = x_train, y = y_train, alpha=0, foldid = foldid)
+plot(ridge)
+show(ridge)
+
+summary(ridge$glmnet.fit)
+
+coef(ridge, s="lambda.1se")
+
+ridge$cvm
+ridge$glmnet.fit
+ridge$lambda.min
+
+
+n_vars <- nrow(ridge$glmnet.fit$beta)
+plot(ridge$glmnet.fit)
+legend("bottomright", 
+       legend = rownames(ridge$glmnet.fit$beta), 
+       col = 1:n_vars, 
+       lty = 1, 
+       cex = 0.6)

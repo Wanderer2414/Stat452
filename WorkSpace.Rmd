@@ -1,0 +1,17 @@
+ridge$lambda.min
+
+G <- crossprod(x_train) / nrow(x_train)
+
+eig <- eigen(G)$values
+
+lambda <- ridge$lambda.min
+
+kappa_before <- max(eig) / min(eig)
+
+kappa_after <- (max(eig) + lambda) /
+               (min(eig) + lambda)
+
+data.frame(
+  Matrix = c("Gram matrix (G)", "Ridge matrix (G + λI)"),
+  Condition_Number = c(kappa_before, kappa_after)
+)
