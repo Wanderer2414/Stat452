@@ -569,10 +569,10 @@ Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \a
 ```{r}
 
 data.frame(
-  OLS = as.numeric(coef(ols)),
+  OLS = as.numeric(coef(ols_fit)),
   Lambda_Min = as.numeric(coef(ridge, "lambda.min")),
   Lambda_Max = as.numeric(coef(ridge, "lambda.1se")),
-  row.names = names(ols$coefficients)
+  row.names = names(ols_fit$coefficients)
 )
 ```
 
