@@ -204,9 +204,6 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 
 ```
 
-**Assignment.** Group 04 is even-numbered, so the assigned dataset is
-`prostate.csv` and the assigned response is `lpsa`.
-
 **Dataset overview.** The `prostate.csv` file originates from the study by
 @stamey1989, which examined the relationship between prostate-specific antigen
 (PSA) levels and several clinical and histological measurements in men with
@@ -240,25 +237,25 @@ guard passes and the design matrix needs no factor encoding. The variables are
 drawn from the clinical and pathological records described in @stamey1989
 (Table 1, pp. 1077--1078) and are summarized below.
 
-- `lcavol` --- log of cancer volume (log cm$^3$), estimated by ultrasound
+- `lcavol` -- log of cancer volume (log cm$^3$), estimated by ultrasound
   before surgery. Larger tumours are expected to produce more PSA.
-- `lweight` --- log of total prostate weight (log g), measured at
+- `lweight` -- log of total prostate weight (log g), measured at
   prostatectomy. Reflects overall prostate size, including both cancerous and
   non-cancerous tissue.
-- `age` --- patient age at the time of diagnosis (years).
-- `lbph` --- log of the amount of benign prostatic hyperplasia (log cm$^2$).
+- `age` -- patient age at the time of diagnosis (years).
+- `lbph` -- log of the amount of benign prostatic hyperplasia (log cm$^2$).
   BPH is non-cancerous prostate enlargement and can independently elevate PSA.
-- `svi` --- seminal vesicle invasion (binary: 1 = present, 0 = absent),
+- `svi` -- seminal vesicle invasion (binary: 1 = present, 0 = absent),
   indicating whether cancer has spread beyond the prostate into the seminal
   vesicles. This is a known marker of advanced disease.
-- `lcp` --- log of capsular penetration (log cm), measuring the extent to
+- `lcp` -- log of capsular penetration (log cm), measuring the extent to
   which cancer has invaded through the prostate capsule. Together with `svi`,
   it captures local disease progression.
-- `gleason` --- combined Gleason score (integer, ranging from 6 to 9 in this
+- `gleason` -- combined Gleason score (integer, ranging from 6 to 9 in this
   sample), the standard histological grading system for prostate cancer
   aggressiveness assigned by a pathologist from biopsy tissue.
-- `pgg45` --- percentage of Gleason grades 4 or 5 in the biopsy specimen
-  (percent, 0--100). Higher values indicate a larger proportion of
+- `pgg45` -- percentage of Gleason grades 4 or 5 in the biopsy specimen
+  (percent, 0-100). Higher values indicate a larger proportion of
   poorly-differentiated, aggressive tumour tissue.
 
 All eight predictors were recorded before or during the prostatectomy procedure
@@ -382,7 +379,7 @@ save(x_train, y_train, x_test, y_test, analysis_data, train_id, test_id, foldid,
 
 ## 1C. Training-data exploration
 
-## Pairwise correlation among predictors
+### Pairwise correlation among predictors
 ```{r eda-cor}
 # Pairwise correlation among predictors
 cor_matrix <- cor(
@@ -398,18 +395,28 @@ knitr::kable(
 
 ```{r eda-heatmap}
 # Correlation heatmap
+layout(matrix(c(1, 2), nrow = 1), widths = c(8.5, 1.5))
+par(mar = c(5, 5, 2, 1))
 cor_matrix <- cor(train_df[, predictors], use = "complete.obs")
 
 image(1:ncol(cor_matrix), 1:ncol(cor_matrix), cor_matrix, 
       axes = FALSE, xlab = "", ylab = "", 
-      col = heat.colors(1000), main = "Correlation Heatmap of Predictors")
+      col = heat.colors(1000, rev=TRUE), main = "Correlation Heatmap of Predictors")
+
 axis(1, at = 1:ncol(cor_matrix), labels = colnames(cor_matrix), las = 2)
 axis(2, at = 1:ncol(cor_matrix), labels = colnames(cor_matrix), las = 1)
+
+par(mar = c(5, 1, 2, 3)) 
+legend_scale <- matrix(seq(0, 1, length.out = 100), nrow = 1)
+image(1, seq(0, 1, length.out = 100), legend_scale, 
+      col = heat.colors(20, rev=TRUE), axes = FALSE, xlab = "", ylab = "")
+
+axis(4, at = seq(0, 1, by = 0.1), las = 1, cex.axis = 0.8)
 ```
 The pairwise correlation matrix was examined to identify potential relationships among predictors. Most predictors showed weak to moderate correlations, suggesting limited redundancy between features. However, some stronger positive correlations were observed, particularly between gleason and pgg45 (r = 0.78), lcavol and lcp (r = 0.68), and svi and lcp (r = 0.69). These relationships indicate that some predictors may share related clinical information. Therefore, Variance Inflation Factor (VIF) analysis was further performed to assess the overall multicollinearity effect in the regression model.
 
 
-## Response Distribution 
+### Response Distribution 
 
 ```{r eda-response-dist}
 
@@ -681,13 +688,12 @@ The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalent
 ### Lambda min:
 ```{r}
 
-g <- crossprod(x_train)
-eigen <- eigen(g)$value
-
-lambda <- ridge$lambda.min
-cat("Lambda min: ",lambda, "\n")
-cat("MSE: ", ridge$cvm[ridge$lambda == lambda], "\n")
-cat("Condition number:", (max(eigen) + lambda)/(min(eigen) + lambda), "\n")
+ridge_lambda_min <- ridge$lambda.min
+ridge_min_mse <- ridge$cvm[ridge$lambda == ridge_lambda_min]
+ridge_cond_min <- safe_condition_numbers(x_train, ridge_lambda_min)[2]
+cat("Lambda min: ",ridge_lambda_min, "\n")
+cat("MSE: ", ridge_min_mse, "\n")
+cat("Condition number:", ridge_cond_min , "\n")
 
 ```
 With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} \approx 0.61$, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
@@ -695,13 +701,12 @@ With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its m
 ### Lambda 1se:
 ```{r}
 
-g <- crossprod(x_train)
-eigen <- eigen(g)$value
-
-lambda <- ridge$lambda.1se
-cat("Lambda 1se: ",lambda, "\n")
-cat("MSE: ", ridge$cvm[ridge$lambda == lambda], "\n")
-cat("Condition number:", (max(eigen) + lambda)/(min(eigen) + lambda), "\n")
+ridge_lambda_1se <- ridge$lambda.1se
+ridge_1se_mse <-ridge$cvm[ridge$lambda == ridge_lambda_1se]
+cat("Lambda 1se: ",ridge_lambda_1se, "\n")
+cat("MSE: ", ridge_1se_mse, "\n")
+ridge_cond_1se <- safe_condition_numbers(x_train, ridge_lambda_1se)[2]
+cat("Condition number:", ridge_cond_1se, "\n")
 
 ```
 Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \approx 1.02$, the condition number decreased only slightly from 20.2 to 19.07, indicating minimal improvement in numerical stability. In contrast, the cross-validation MSE increased from 0.61 to 0.66. Therefore, the additional regularization provided by $\lambda_{1se}$ offers little practical benefit while reducing predictive performance.
@@ -709,10 +714,13 @@ Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \a
 ### Coefficients:
 ```{r}
 
+ridge_lambda_min_coef <- as.numeric(coef(ridge, "lambda.min"))
+ridge_lambda_1se_coef <- as.numeric(coef(ridge, "lambda.1se"))
+
 data.frame(
   OLS = as.numeric(coef(ols_fit)),
-  Lambda_Min = as.numeric(coef(ridge, "lambda.min")),
-  Lambda_Max = as.numeric(coef(ridge, "lambda.1se")),
+  Lambda_Min = as.numeric(ridge_lambda_min_coef),
+  Lambda_Max = as.numeric(ridge_lambda_1se_coef),
   row.names = names(ols_fit$coefficients)
 )
 ```
@@ -760,9 +768,14 @@ Based on the 5-fold cross-validation curve generated for the Lasso regression mo
 ### Analysis of $\lambda_{\text{min}}$
 
 ```{r lasso-min}
-lambda_min <- lasso_cv$lambda.min
-coef(lasso_cv, s="lambda.min")
-count_nonzero(lasso_cv, s="lambda.min")
+lasso_lambda_min <- lasso_cv$lambda.min
+lasso_cond_min <- safe_condition_numbers(x_train, lambda = lasso_lambda_min)[2]
+lasso_min_coef <- coef(lasso_cv, s="lambda.min")
+lasso_min_nonzero <- count_nonzero(lasso_cv, s="lambda.min")
+
+lasso_lambda_min
+lasso_min_coef
+lasso_min_nonzero
 ```
 
 
@@ -775,13 +788,13 @@ The retained predictors suggest that tumor volume (lcavol) is the most influenti
 Overall, $\lambda_{\text{min}}$ produces the model with the lowest cross-validation error while preserving a moderate number of predictors, offering a balance between prediction accuracy and model complexity.
 
 ```{r lasso-cv-error-min}
-cv_mse_min <- lasso_cv$cvm[
+lasso_min_mse <- lasso_cv$cvm[
     lasso_cv$lambda==
-    lasso_cv$lambda.min
+    lasso_lambda_min
 ]
-cv_mse_min
+lasso_min_mse
 ```
-The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(cv_mse_min, 4)`**. This value corresponds to $\lambda_{\text{min}} = `r round(lasso_cv$lambda.min, 4)`$ and represents the estimated prediction error obtained during model tuning using the training data.
+The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(lasso_min_mse, 4)`**. This value corresponds to $\lambda_{\text{min}} = $`r round(lasso_lambda_min, 4)` and represents the estimated prediction error obtained during model tuning using the training data.
 
 A lower CV-MSE indicates better expected predictive performance on unseen data. Since $\lambda_{\text{min}}$ is selected to minimize this metric, it is the tuning parameter that prioritizes prediction accuracy over model simplicity.
 
@@ -789,25 +802,28 @@ A lower CV-MSE indicates better expected predictive performance on unseen data. 
 ### Analysis of $\lambda_{\text{1se}}$
 
 ```{r lasso-1se}
-lambda_1se <- lasso_cv$lambda.1se
-coef(lasso_cv, s="lambda.1se")
-count_nonzero(lasso_cv, s="lambda.1se")
+lasso_lambda_1se <- lasso_cv$lambda.1se
+lasso_cond_1se <- safe_condition_numbers(x_train, lambda = lasso_lambda_1se)[2]
+lasso_1se_coef <- coef(lasso_cv, s="lambda.1se")
+lasso_1se_nonzero <- count_nonzero(lasso_cv, s="lambda.1se")
+lasso_lambda_1se
+lasso_1se_coef
+lasso_1se_nonzero
 ```
 The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
 
 Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the variables lbph and pgg45 are removed, resulting in a more parsimonious and interpretable model with only a small loss in predictive performance.
 
 ```{r lasso-cv-error-1se}
-cv_mse_1se <- lasso_cv$cvm[
+lasso_1se_mse <- lasso_cv$cvm[
     lasso_cv$lambda==
     lasso_cv$lambda.1se
 ]
-cv_mse_1se
+lasso_1se_mse
 ```
 The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, resulting in a five-fold cross-validation Mean Squared Error (CV-MSE) of r round(cv_mse_1se, 4). Although this error is slightly higher than that of $\lambda_{\text{min}}$, it remains within one standard error of the minimum while providing a more conservative model.
 
 Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the predictors lbph and pgg45 are removed, resulting in a simpler and more interpretable model with only a modest reduction in predictive performance.
-
 ### Coefficient Path
 
 ```{r lasso-coef-path}
@@ -836,13 +852,45 @@ Overall, the coefficient path shows that as $-\log(\lambda)$ increases (equivale
 
 Among the predictors, **lcavol** enters the model first and consistently has the largest coefficient, indicating that it is the most influential predictor of **lpsa**. **svi** and **lweight** also become active relatively early and maintain positive coefficients throughout the path. In contrast, **age, lbph, lcp, gleason,** and **pgg45** enter only when the penalty becomes sufficiently small, suggesting that their contributions are comparatively weaker and less stable.
 
-## 2D 
+## 2D Controlled comparison and locked core model
 
 ```{r core-comparison}
 # Build a comparison from training/CV quantities only.
+ols_summary <- data.frame(
+  tunning_rule = "None",
+  lambda = 0,
+  cv_error = ols_cv_mse,
+  cond = safe_condition_numbers(x_train, lambda = 0)[2],
+  coefficient_norm = sqrt(sum(coef(ols_fit)[-1]^2)),
+  num_non_zero = sum(coef(ols_fit) != 0, na.rm = TRUE) - 1,
+  row.names = "OLS"
+)
+ridge_summary <- data.frame(
+  tunning_rule = c("lambda.min", "lambda.1se"),
+  lambda = c(ridge_lambda_min, ridge_lambda_1se),
+  cv_error = c(ridge_min_mse, ridge_1se_mse),
+  cond = c(ridge_cond_min, ridge_cond_1se),
+  coefficient_norm = c(sqrt(sum(ridge_lambda_min_coef[-1]^2)),sqrt(sum(ridge_lambda_1se_coef[-1]^2))),
+  num_non_zero = c(count_nonzero(ridge, s="lambda.min"),count_nonzero(ridge, s="lambda.1se")),
+  row.names = c("Ridge"," ")
+)
+lasso_summary <- data.frame(
+  tunning_rule = c("lambda.min", "lambda.1se"),
+  lambda = c(lasso_lambda_min, lasso_lambda_1se),
+  cv_error = c(lasso_min_mse, lasso_1se_mse),
+  cond = c(lasso_cond_min, lasso_cond_1se),
+  coefficient_norm = c(sqrt(sum(lasso_min_coef[-1]^2)),sqrt(sum(lasso_1se_coef[-1]^2))),
+  num_non_zero = c(lasso_min_nonzero, lasso_1se_nonzero),
+  row.names = c("Lasso"," ")
+)
+
+rbind(ols_summary,ridge_summary,lasso_summary)
+
 ```
 
-**Core model nominated before holdout evaluation:** [method and reason]
+Based on the training comparison, lasso with $\lambda_{min}$ achieved the lowest cross-validation error (`r lasso_min_mse`) while reducing the number of predictors from eight to five. Ridge with $\lambda_{min}$ improved numerical stability compared with OLS by reducing both the coefficient norm and the condition number, but it retained all predictors and produced a higher CV error than lasso. The $\lambda_{1se}$ models applied stronger regularization, resulting in smaller coefficient norms and simpler models; however, this came at the cost of increased cross-validation error. Therefore, before inspecting the holdout responses, lasso with $\lambda_{min}$ is nominated as the core candidate, as it provides the best balance between predictive performance and interpretability through variable selection. This recommendation is based solely on the training data and will later be evaluated on the locked holdout set.
+
+The $\lambda_{min}$ and $\lambda_{1se}$ selection rules address different modeling objectives. The $\lambda_{min}$ rule selects the value of $\lambda$ that minimizes the cross-validation error and therefore prioritizes predictive accuracy. In contrast, the $\lambda_{1se}$ rule selects the largest $\lambda$ whose cross-validation error is within one standard error of the minimum, favouring a simpler and more stable model with stronger regularization. These rules therefore answer different decision questions: whether the primary objective is the best possible prediction or a more parsimonious model with comparable predictive performance. Predictive performance is assessed by the cross-validation error, whereas variable selection concerns which predictors remain in the model, and interpretability concerns how easily the resulting model can be understood. In our results, lasso with $\lambda_{min}$ achieved the lowest cross-validation error, while lasso with $\lambda_{1se}$ retained fewer predictors, illustrating the trade-off between prediction accuracy and model simplicity.
 
 ## 2E. Perturbation or stability check
 
@@ -862,7 +910,8 @@ $$
 X \in \mathbb{R}^{n\times p}
 $$
 
-be the standardized training design matrix with $n$ observations and $p$ predictors.
+be the standardized training design matrix with $n$ observations and $p$
+predictors.
 
 Let
 
@@ -880,21 +929,9 @@ be the coefficient vector.
 
 ## 3A. Ridge and conditioning
 
-*Write the ridge derivation. Define dimensions and explain uniqueness.*
-
-```{r ridge-conditioning}
-# Use x_train and the fitted ridge lambda.min.
-# safe_condition_numbers(x_train, lambda = ...)
-```
-
-## 3A. Ridge and conditioning
-
 ### Ridge objective
 
-
-
 The ridge objective function is
-
 $$
 Q_\lambda(b)
 =
@@ -1056,11 +1093,6 @@ Because the same positive constant is added to every eigenvalue, the smallest ei
 
 
 From the table above, the ridge matrix should have a smaller condition number than the original Gram matrix. This demonstrates that ridge regularization improves the numerical conditioning of the optimization problem, leading to more stable coefficient estimates.
-
-
-## 3B. Lasso optimality and soft thresholding
-
-*Derive the zero/nonzero optimality conditions and the orthonormal-design formula.*
 
 ## 3B. Lasso optimality and soft thresholding
 
