@@ -380,6 +380,54 @@ save(x_train, y_train, x_test, y_test, analysis_data, train_id, test_id, foldid,
 
 *Report seeds, dimensions, scaling, folds, and leakage safeguards.*
 
+## 1B. Split and Preprocessing Plan
+
+To ensure a fair comparison among OLS, ridge, lasso, and elastic net, all preprocessing and model development steps were performed using only the training data. The holdout test set was reserved exclusively for the final evaluation and was not used during model fitting, model selection, or hyperparameter tuning.
+
+### Data split
+
+The observations were randomly partitioned into training and test sets using the custom `split_rows()` function with a training proportion of 80%. For Group 4, the split seed was **240204**, ensuring that the same partition can be reproduced in future analyses.
+
+```{r}
+cat("Training observations:", length(train_id), "\n")
+cat("Test observations:", length(test_id), "\n")
+```
+
+The training data were used for exploratory analysis, preprocessing, model fitting, and cross-validation, while the holdout test data remained untouched until the final evaluation.
+
+### Predictor standardization
+
+Since ridge regression, lasso, and elastic net are sensitive to the scale of predictor variables, all predictors were standardized before model fitting. The centering and scaling parameters were estimated **only from the training data**, and these same values were subsequently applied to the test predictors.
+
+Using training-derived scaling parameters prevents information from the holdout observations from influencing the preprocessing stage and ensures that the test set remains an unbiased evaluation dataset.
+
+### Five-fold cross-validation
+
+Model tuning was carried out using five-fold cross-validation on the training data only. Fold assignments were generated using the fixed cross-validation seed **240304** and were shared across all regularized models. Reusing identical folds ensures that differences in cross-validation performance are attributable to the models themselves rather than random variation in fold assignment.
+
+### Missing-value handling
+
+The dataset was checked for missing values before model fitting.
+
+```{r}
+cat("Total missing values:", sum(is.na(analysis_data)), "\n")
+```
+
+No missing values were detected; therefore, no imputation was required. If missing values had been present, imputation statistics would have been estimated using only the training data and then applied unchanged to the test data.
+
+### Leakage control
+
+Several safeguards were implemented to prevent information leakage throughout the analysis:
+
+- The train–test split was performed before any preprocessing.
+- Predictor standardization used statistics estimated from the training data only.
+- Five-fold cross-validation was conducted exclusively within the training set.
+- Hyperparameter tuning for ridge, lasso, and elastic net relied solely on training cross-validation error.
+- The holdout responses (`y_test`) were not accessed until the final evaluation stage.
+
+As a result, the holdout test set provides an unbiased assessment of predictive performance because no information from the test observations entered the model construction or tuning process.
+
+
 ## 1C. Training-data exploration
 
 ## Pairwise correlation among predictors
@@ -1411,23 +1459,6 @@ but almost never makes them exactly zero. Consequently, ridge improves numerical
 
 *Connect one specific numerical result to Problem 3A or 3B.*
 
-ridge$lambda.min
-
-G <- crossprod(x_train) / nrow(x_train)
-
-eig <- eigen(G)$values
-
-lambda <- ridge$lambda.min
-
-kappa_before <- max(eig) / min(eig)
-
-kappa_after <- (max(eig) + lambda) /
-               (min(eig) + lambda)
-
-data.frame(
-  Matrix = c("Gram matrix (G)", "Ridge matrix (G + λI)"),
-  Condition_Number = c(kappa_before, kappa_after)
-)
 
 ## 3C. Connect algebra to evidence
 
