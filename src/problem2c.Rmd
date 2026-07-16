@@ -1,0 +1,87 @@
+---
+title: "Problem 2C"
+output:
+  pdf_document: default
+---
+# Setup helper functions
+```{r setup}
+
+source("utils.R")
+library(car)
+library(lars)
+library(glmnet)
+
+load("../data/tmpData.RData")
+train_df <- analysis_data[train_id, ]
+```
+
+```{r lasso-fit}
+lasso_cv <- fit_cv_glmnet(
+    x = x_train,
+    y = y_train,
+    alpha = 1,
+    foldid = foldid
+)
+plot(lasso_cv)
+
+```
+Based on the 5-fold cross-validation curve generated for the Lasso regression model ($\alpha = 1$), we observe the relationship between the tuning parameter $\lambda$ and the Mean-Squared Error (MSE). The top axis indicates the number of active (non-zero) predictors retained in the model at each level of penalization.
+
+* The Cross-Validation Curve: The red dots represent the average CV-MSE across the 5 folds for each $\lambda$ value, with the gray error bars denoting one standard error above and below the mean. As $-\log(\lambda)$ increases (moving from left to right, meaning the penalty weakens), the MSE initially drops, reaches a minimum, and then slightly stabilizes as the model approaches the unpenalized OLS limit.
+
+* Optimal $\lambda$ ($\lambda_{\text{min}}$): The right vertical dashed line marks `lambda.min`, the value that strictly minimizes the cross-validation MSE. At this optimal point for prediction accuracy ($-\log(\lambda) \approx 2.4$), the Lasso penalty retains 5 non-zero predictors*.
+
+* Parsimonious $\lambda$ ($\lambda_{\text{1se}}$): The left vertical dashed line marks `lambda.1se`, selected by the one-standard-error rule. This value applies a stronger penalty ($-\log(\lambda) \approx 1.67$) to produce a sparser model. It retains only 3 non-zero predictors while keeping the error within one standard deviation of the absolute minimum MSE, offering a robust trade-off between predictive power and model simplicity.
+
+```{r lasso-min-se}
+lasso_cv$lambda.min
+
+lasso_cv$lambda.1se
+```
+The exact penalty parameters determined by the cross-validation procedure are:
+
+lambda.min: 0.0891. This is the penalty value that yields the lowest training cross-validation MSE (0.5790).
+
+lambda.1se: 0.1875. Following the one-standard-error rule, this is the largest penalty parameter that keeps the cross-validation error within one standard deviation of the absolute minimum.
+
+
+```{r lasso-nonzeros}
+coef(lasso_cv, s="lambda.min")
+count_nonzero(lasso_cv, s="lambda.min")
+```
+
+```{r lasso-nonzeros}
+coef(lasso_cv, s="lambda.1se")
+count_nonzero(lasso_cv, s="lambda.1se")
+
+```
+
+Comparing the active predictors under both tuning rules explicitly reveals Lasso's capability for exact variable selection:
+
+Under lambda.min: The model retains 5 non-zero predictors (lcavol, lweight, lbph, svi, and pgg45). The remaining variables (age, lcp, and gleason) are shrunken completely to zero.
+
+Under lambda.1se: The stronger penalty further simplifies the model by dropping lbph and pgg45. Only the 3 most statistically robust predictors are retained as non-zero: lcavol, lweight, svi.
+
+```{r lasso-cv-error}
+lasso_cv$cvm[
+    lasso_cv$lambda==
+    lasso_cv$lambda.min
+]
+```
+The value 0.5790 represents the minimum cross-validation Mean-Squared Error (CV-MSE). 
+It indicates the best predictive accuracy achieved by the Lasso model during the tuning phase across the 5 shared validation folds.
+
+```{r lasso-coef-path}
+lasso_fit <- glmnet(
+    x_train,
+    y_train,
+    alpha=1,
+    standardize=FALSE,
+      
+)
+plot(lasso_fit)
+
+```
+
+
+
