@@ -891,14 +891,12 @@ be the coefficient vector.
 
 ### Ridge objective
 
-
-
 The ridge objective function is
 
 $$
 Q_\lambda(b)
 =
-\frac1{2}\|y-Xb\|^2
+\frac1{2n}\|y-Xb\|^2
 +
 \frac{\lambda}{2}\|b\|^2.
 $$
@@ -908,7 +906,7 @@ Taking the gradient,
 $$
 \nabla Q_\lambda(b)
 =
-(X^TXb-X^Ty)
+\frac1n(X^TXb-X^Ty)
 +
 \lambda b.
 $$
@@ -916,15 +914,33 @@ $$
 Setting the gradient equal to zero,
 
 $$
-(X^TX+\lambda I)b=X^Ty.
+\frac1nX^TXb
+-
+\frac1nX^Ty
++
+\lambda b
+=
+0.
+$$
+
+Rearranging,
+
+$$
+\left(
+\frac1nX^TX
++
+\lambda I
+\right)b
+=
+\frac1nX^Ty.
 $$
 
 Define
 
 $$
-G=X^TX,
+G=\frac1nX^TX,
 \qquad
-z=X^Ty.
+z=\frac1nX^Ty.
 $$
 
 Hence,
@@ -943,7 +959,7 @@ $$
 }
 $$
 
-Since $G$ is positive semidefinite and $\lambda>0$,
+Since \(G\) is positive semidefinite and \(\lambda>0\),
 
 $$
 G+\lambda I
@@ -960,8 +976,6 @@ $$
 {\mu_{\min}},
 $$
 
-
-
 while ridge gives
 
 $$
@@ -970,7 +984,6 @@ $$
 \frac{\mu_{\max}+\lambda}
 {\mu_{\min}+\lambda}.
 $$
-
 
 where
 
@@ -986,15 +999,14 @@ $$
 
 is the **smallest (positive) eigenvalue** of \(G\).
 
-
-
+---
 
 ### Condition Number and Numerical Stability
 
 The Gram matrix is defined as
 
 $$
-G=\frac{1}{n}X^TX.
+G=\frac1nX^TX.
 $$
 
 Since \(G\) is symmetric and positive semidefinite, all of its eigenvalues are non-negative. Let the eigenvalues of \(G\) be
@@ -1054,10 +1066,7 @@ $$
 
 Because the same positive constant is added to every eigenvalue, the smallest eigenvalue is shifted away from zero, reducing the condition number. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the ridge estimator is guaranteed to have a unique solution.
 
-
 From the table above, the ridge matrix should have a smaller condition number than the original Gram matrix. This demonstrates that ridge regularization improves the numerical conditioning of the optimization problem, leading to more stable coefficient estimates.
-
-
 ## 3B. Lasso optimality and soft thresholding
 
 *Derive the zero/nonzero optimality conditions and the orthonormal-design formula.*
@@ -1069,15 +1078,15 @@ Lasso regression estimates the regression coefficients by minimizing
 $$
 Q_\lambda(b)
 =
-\|y-Xb\|^2
+\frac1{2n}\|y-Xb\|^2
 +
-\lambda\|b\|,
+\lambda\|b\|_1,
 $$
 
 where
 
 $$
-\|b\|
+\|b\|_1
 =
 \sum_{j=1}^{p}|b_j|,
 $$
@@ -1091,13 +1100,19 @@ Unlike ridge regression, the \(L_1\)-norm contains the absolute value function, 
 Assume that the predictors have been centered, standardized, and satisfy the orthonormal design condition
 
 $$
-X^TX=I.
+\frac1nX^TX=I.
+$$
+
+Equivalently,
+
+$$
+X^TX=nI.
 $$
 
 Define
 
 $$
-z=X^Ty.
+z=\frac1nX^Ty.
 $$
 
 The squared error term can be expanded as
@@ -1110,10 +1125,35 @@ $$
 \end{aligned}
 $$
 
+Substituting into the objective function,
+
+$$
+\begin{aligned}
+Q_\lambda(b)
+&=
+\frac1{2n}
+\left(
+y^Ty
+-
+2b^TX^Ty
++
+b^TX^TXb
+\right)
++
+\lambda\sum_{j=1}^{p}|b_j|.
+\end{aligned}
+$$
+
 Using
 
 $$
-X^TX=I,
+X^TX=nI
+$$
+
+and
+
+$$
+z=\frac1nX^Ty,
 $$
 
 the objective becomes
@@ -1133,7 +1173,7 @@ $$
 where
 
 $$
-C=y^Ty
+C=\frac1{2n}y^Ty
 $$
 
 is a constant independent of \(b\).
@@ -1344,10 +1384,96 @@ $$
 
 but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
 
+---
+
+### Interpretation
+
+The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
+
+$$
+|z_j|\le\lambda,
+$$
+
+the coefficient is shrunk completely to zero, meaning that the corresponding predictor is removed from the model. Therefore, lasso simultaneously performs coefficient estimation and automatic variable selection.
+
+In contrast, ridge regression continuously shrinks coefficients toward zero,
+
+$$
+\hat b_{\text{ridge}}
+=
+(G+\lambda I)^{-1}z,
+$$
+
+but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
+
 
 ## 3C. Connect algebra to evidence
 
 *Connect one specific numerical result to Problem 3A or 3B.*
+
+ridge$lambda.min
+
+G <- crossprod(x_train) / nrow(x_train)
+
+eig <- eigen(G)$values
+
+lambda <- ridge$lambda.min
+
+kappa_before <- max(eig) / min(eig)
+
+kappa_after <- (max(eig) + lambda) /
+               (min(eig) + lambda)
+
+data.frame(
+  Matrix = c("Gram matrix (G)", "Ridge matrix (G + λI)"),
+  Condition_Number = c(kappa_before, kappa_after)
+)
+
+## 3C. Connect algebra to evidence
+
+Section 3A showed that ridge regression improves the conditioning of the Gram matrix by adding a positive constant \(\lambda\) to every eigenvalue. Consequently, the theoretical condition number changes from
+
+$$
+\kappa_2(G)
+=
+\frac{\mu_{\max}}
+{\mu_{\min}}
+$$
+
+to
+
+$$
+\kappa_2(G+\lambda I)
+=
+\frac{\mu_{\max}+\lambda}
+{\mu_{\min}+\lambda}.
+$$
+
+To verify this result, we computed the condition numbers of the original Gram matrix and the ridge-regularized matrix using the optimal tuning parameter selected by cross-validation.
+
+```{r ridge-evidence}
+G <- crossprod(x_train) / nrow(x_train)
+
+eig <- eigen(G)$values
+
+lambda <- ridge$lambda.min
+
+kappa_before <- max(eig) / min(eig)
+
+kappa_after <- (max(eig) + lambda) /
+               (min(eig) + lambda)
+
+knitr::kable(
+  data.frame(
+    Matrix = c("Gram matrix (G)", "Ridge matrix (G + λI)"),
+    Condition_Number = c(kappa_before, kappa_after)
+  ),
+  digits = 3,
+  caption = "Condition numbers before and after ridge regularization."
+)
+```
+
+The results show that the condition number decreases from **20.596** for the original Gram matrix to **8.936** after ridge regularization. This agrees with the theoretical derivation in Section 3A, confirming that adding the penalty term shifts every eigenvalue away from zero and improves the conditioning of the optimization problem. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the estimated regression coefficients become more reliable.
 
 # Problem 4. Elastic net and a neural-feature bridge
 
