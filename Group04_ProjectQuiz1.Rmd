@@ -180,6 +180,24 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
     ridge = (largest + lambda) / (smallest + lambda)
   )
 }
+analysis_model <- function(x, y, alpha, foldid) {
+  model <- fit_cv_glmnet(x = x, y = y, alpha=alpha, foldid = foldid)
+  list(
+    model = model,
+    lambda_min = model$lambda.min,
+    mse_min = model$cvm[model$lambda == model$lambda.min],
+    cond_min = safe_condition_numbers(x, lambda = model$lambda.min)[2],
+    coef_min = coef(model, "lambda.min"),
+    coef_min_norm = sqrt(sum(coef(model, "lambda.min")[-1]^2)),
+    nonzero_min = count_nonzero(model, s="lambda.min"),
+    lambda_1se = model$lambda.1se,
+    cond_1se = safe_condition_numbers(x, lambda = model$lambda.1se)[2],
+    mse_1se = model$cvm[model$lambda == model$lambda.1se],
+    coef_1se = coef(model, "lambda.1se"),
+    coef_1se_norm = sqrt(sum(coef(model, "lambda.1se")[-1]^2)),
+    nonzero_1se = count_nonzero(model, s="lambda.1se")
+  )
+}
 ```
 
 # Problem 1. Prediction design and leakage control
@@ -679,8 +697,9 @@ regularization introduced in 2B--2C.
 
 ```{r ridge}
 
-ridge <- fit_cv_glmnet(x = x_train, y = y_train, alpha=0, foldid = foldid)
-plot(ridge)
+  
+ridge <- analysis_model(x = x_train, y = y_train, alpha=0, foldid = foldid)
+plot(ridge$model)
 
 ```
 The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalently, as $\lambda$ decreases), suggesting that reducing the regularization strength improves predictive performance. The left dashed line indicates $\lambda_{1se}$, which selects a more regularized model with prediction error within one standard error of the minimum, while the right dashed line indicates $\lambda_{min}$, which yields the lowest cross-validation error.
@@ -688,12 +707,9 @@ The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalent
 ### Lambda min:
 ```{r}
 
-ridge_lambda_min <- ridge$lambda.min
-ridge_min_mse <- ridge$cvm[ridge$lambda == ridge_lambda_min]
-ridge_cond_min <- safe_condition_numbers(x_train, ridge_lambda_min)[2]
-cat("Lambda min: ",ridge_lambda_min, "\n")
-cat("MSE: ", ridge_min_mse, "\n")
-cat("Condition number:", ridge_cond_min , "\n")
+cat("Lambda min: ",ridge$lambda_min, "\n")
+cat("MSE: ", ridge$mse_min, "\n")
+cat("Condition number:", ridge$cond_min , "\n")
 
 ```
 With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} \approx 0.61$, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
@@ -701,12 +717,9 @@ With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its m
 ### Lambda 1se:
 ```{r}
 
-ridge_lambda_1se <- ridge$lambda.1se
-ridge_1se_mse <-ridge$cvm[ridge$lambda == ridge_lambda_1se]
-cat("Lambda 1se: ",ridge_lambda_1se, "\n")
-cat("MSE: ", ridge_1se_mse, "\n")
-ridge_cond_1se <- safe_condition_numbers(x_train, ridge_lambda_1se)[2]
-cat("Condition number:", ridge_cond_1se, "\n")
+cat("Lambda 1se: ",ridge$lambda_1se, "\n")
+cat("MSE: ", ridge$mse_1se, "\n")
+cat("Condition number:", ridge$cond_1se, "\n")
 
 ```
 Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \approx 1.02$, the condition number decreased only slightly from 20.2 to 19.07, indicating minimal improvement in numerical stability. In contrast, the cross-validation MSE increased from 0.61 to 0.66. Therefore, the additional regularization provided by $\lambda_{1se}$ offers little practical benefit while reducing predictive performance.
@@ -714,13 +727,10 @@ Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \a
 ### Coefficients:
 ```{r}
 
-ridge_lambda_min_coef <- as.numeric(coef(ridge, "lambda.min"))
-ridge_lambda_1se_coef <- as.numeric(coef(ridge, "lambda.1se"))
-
 data.frame(
   OLS = as.numeric(coef(ols_fit)),
-  Lambda_Min = as.numeric(ridge_lambda_min_coef),
-  Lambda_Max = as.numeric(ridge_lambda_1se_coef),
+  Lambda_Min = as.numeric(ridge$coef_min),
+  Lambda_Max = as.numeric(ridge$coef_1se),
   row.names = names(ols_fit$coefficients)
 )
 ```
@@ -728,10 +738,10 @@ data.frame(
 Compared with the OLS model, Ridge regression shrinks most regression coefficients toward zero, reducing their magnitudes through the regularization penalty. This shrinkage helps alleviate the effects of multicollinearity while retaining all predictors in the model. Most coefficients exhibit the expected behavior by moving closer to zero as the regularization strength increases. However, two coefficients show notable exceptions. The coefficient of \textbf{lcp} changes from a small negative value in the OLS model to positive values under Ridge regression. In addition, the coefficient of \textbf{gleason} increases in magnitude, moving further away from zero rather than shrinking like the other coefficients. These changes suggest that the effects of \textbf{lcp} and \textbf{gleason} are influenced by multicollinearity with other predictors. As Ridge simultaneously estimates all coefficients under a penalty, it redistributes the effects among correlated variables, causing some coefficients to increase in magnitude or even change sign despite the overall shrinkage trend.
 
 ```{R}
-n_vars <- nrow(ridge$glmnet.fit$beta)
-plot(ridge$glmnet.fit)
+n_vars <- nrow(ridge$model$glmnet.fit$beta)
+plot(ridge$model$glmnet.fit)
 legend("topleft", 
-       legend = rownames(ridge$glmnet.fit$beta), 
+       legend = rownames(ridge$model$glmnet.fit$beta), 
        col = 1:n_vars, 
        lty = 1, 
        cex = 0.6)
@@ -747,13 +757,13 @@ To address multicollinearity, Ridge impose an $L_2$ penalty on the regression co
 
 
 ```{r lasso-fit}
-lasso_cv <- fit_cv_glmnet(
+lasso_cv <- analysis_model(
     x = x_train,
     y = y_train,
     alpha = 1,
     foldid = foldid
 )
-plot(lasso_cv)
+plot(lasso_cv$model)
 
 ```
 
@@ -768,14 +778,10 @@ Based on the 5-fold cross-validation curve generated for the Lasso regression mo
 ### Analysis of $\lambda_{\text{min}}$
 
 ```{r lasso-min}
-lasso_lambda_min <- lasso_cv$lambda.min
-lasso_cond_min <- safe_condition_numbers(x_train, lambda = lasso_lambda_min)[2]
-lasso_min_coef <- coef(lasso_cv, s="lambda.min")
-lasso_min_nonzero <- count_nonzero(lasso_cv, s="lambda.min")
 
-lasso_lambda_min
-lasso_min_coef
-lasso_min_nonzero
+lasso_cv$lambda_min
+lasso_cv$coef_min
+lasso_cv$nonzero_min
 ```
 
 
@@ -788,13 +794,10 @@ The retained predictors suggest that tumor volume (lcavol) is the most influenti
 Overall, $\lambda_{\text{min}}$ produces the model with the lowest cross-validation error while preserving a moderate number of predictors, offering a balance between prediction accuracy and model complexity.
 
 ```{r lasso-cv-error-min}
-lasso_min_mse <- lasso_cv$cvm[
-    lasso_cv$lambda==
-    lasso_lambda_min
-]
-lasso_min_mse
+
+lasso_cv$mse_min
 ```
-The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(lasso_min_mse, 4)`**. This value corresponds to $\lambda_{\text{min}} = $`r round(lasso_lambda_min, 4)` and represents the estimated prediction error obtained during model tuning using the training data.
+The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(lasso_cv$mse_min, 4)`**. This value corresponds to $\lambda_{\text{min}} = $`r round(lasso_cv$lambda_min, 4)` and represents the estimated prediction error obtained during model tuning using the training data.
 
 A lower CV-MSE indicates better expected predictive performance on unseen data. Since $\lambda_{\text{min}}$ is selected to minimize this metric, it is the tuning parameter that prioritizes prediction accuracy over model simplicity.
 
@@ -802,24 +805,16 @@ A lower CV-MSE indicates better expected predictive performance on unseen data. 
 ### Analysis of $\lambda_{\text{1se}}$
 
 ```{r lasso-1se}
-lasso_lambda_1se <- lasso_cv$lambda.1se
-lasso_cond_1se <- safe_condition_numbers(x_train, lambda = lasso_lambda_1se)[2]
-lasso_1se_coef <- coef(lasso_cv, s="lambda.1se")
-lasso_1se_nonzero <- count_nonzero(lasso_cv, s="lambda.1se")
-lasso_lambda_1se
-lasso_1se_coef
-lasso_1se_nonzero
+lasso_cv$lambda.1se
+lasso_cv$coef_1se
+lasso_cv$nonzero_1se
 ```
 The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
 
 Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the variables lbph and pgg45 are removed, resulting in a more parsimonious and interpretable model with only a small loss in predictive performance.
 
 ```{r lasso-cv-error-1se}
-lasso_1se_mse <- lasso_cv$cvm[
-    lasso_cv$lambda==
-    lasso_cv$lambda.1se
-]
-lasso_1se_mse
+lasso_cv$mse_1se
 ```
 The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, resulting in a five-fold cross-validation Mean Squared Error (CV-MSE) of r round(cv_mse_1se, 4). Although this error is slightly higher than that of $\lambda_{\text{min}}$, it remains within one standard error of the minimum while providing a more conservative model.
 
@@ -827,19 +822,12 @@ Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predic
 ### Coefficient Path
 
 ```{r lasso-coef-path}
-lasso_fit <- glmnet(
-    x_train,
-    y_train,
-    alpha=1,
-    standardize=FALSE,
-      
-)
 
-plot(lasso_fit, xvar = "lambda", label = TRUE)
+plot(lasso_cv$model$glmnet.fit, xvar = "lambda", label = TRUE)
 
 legend("topleft", 
-       legend = rownames(lasso_fit$beta), 
-       col = 1:nrow(lasso_fit$beta), 
+       legend = rownames(lasso_cv$model$glmnet.fit$beta), 
+       col = 1:nrow(lasso_cv$model$glmnet.fit$beta), 
        lty = 1, 
        cex = 0.7,
        lwd = 2,
@@ -865,42 +853,115 @@ ols_summary <- data.frame(
   num_non_zero = sum(coef(ols_fit) != 0, na.rm = TRUE) - 1,
   row.names = "OLS"
 )
+
 ridge_summary <- data.frame(
   tunning_rule = c("lambda.min", "lambda.1se"),
-  lambda = c(ridge_lambda_min, ridge_lambda_1se),
-  cv_error = c(ridge_min_mse, ridge_1se_mse),
-  cond = c(ridge_cond_min, ridge_cond_1se),
-  coefficient_norm = c(sqrt(sum(ridge_lambda_min_coef[-1]^2)),sqrt(sum(ridge_lambda_1se_coef[-1]^2))),
-  num_non_zero = c(count_nonzero(ridge, s="lambda.min"),count_nonzero(ridge, s="lambda.1se")),
+  lambda = c(ridge$lambda_min, ridge$lambda_1se),
+  cv_error = c(ridge$mse_min, ridge$mse_1se),
+  cond = c(ridge$cond_min, ridge$cond_1se),
+  coefficient_norm = c(sqrt(sum(ridge$coef_min[-1]^2)),sqrt(sum(ridge$coef_1se[-1]^2))),
+  num_non_zero = c(ridge$nonzero_min,ridge$nonzero_1se),
   row.names = c("Ridge"," ")
 )
 lasso_summary <- data.frame(
   tunning_rule = c("lambda.min", "lambda.1se"),
-  lambda = c(lasso_lambda_min, lasso_lambda_1se),
-  cv_error = c(lasso_min_mse, lasso_1se_mse),
-  cond = c(lasso_cond_min, lasso_cond_1se),
-  coefficient_norm = c(sqrt(sum(lasso_min_coef[-1]^2)),sqrt(sum(lasso_1se_coef[-1]^2))),
-  num_non_zero = c(lasso_min_nonzero, lasso_1se_nonzero),
+  lambda = c(lasso_cv$lambda_min, lasso_cv$lambda_1se),
+  cv_error = c(lasso_cv$mse_min, lasso_cv$mse_1se),
+  cond = c(lasso_cv$cond_min, lasso_cv$cond_1se),
+  coefficient_norm = c(sqrt(sum(lasso_cv$coef_min)),sqrt(sum(lasso_cv$coef_1se))),
+  num_non_zero = c(lasso_cv$nonzero_min, lasso_cv$nonzero_1se),
   row.names = c("Lasso"," ")
 )
 
-rbind(ols_summary,ridge_summary,lasso_summary)
+knitr::kable(rbind(ols_summary,ridge_summary,lasso_summary))
 
 ```
 
-Based on the training comparison, lasso with $\lambda_{min}$ achieved the lowest cross-validation error (`r lasso_min_mse`) while reducing the number of predictors from eight to five. Ridge with $\lambda_{min}$ improved numerical stability compared with OLS by reducing both the coefficient norm and the condition number, but it retained all predictors and produced a higher CV error than lasso. The $\lambda_{1se}$ models applied stronger regularization, resulting in smaller coefficient norms and simpler models; however, this came at the cost of increased cross-validation error. Therefore, before inspecting the holdout responses, lasso with $\lambda_{min}$ is nominated as the core candidate, as it provides the best balance between predictive performance and interpretability through variable selection. This recommendation is based solely on the training data and will later be evaluated on the locked holdout set.
+Based on the training comparison, lasso with $\lambda_{min}$ achieved the lowest cross-validation error (`r lasso_cv$mse_min`) while reducing the number of predictors from eight to five. Ridge with $\lambda_{min}$ improved numerical stability compared with OLS by reducing both the coefficient norm and the condition number, but it retained all predictors and produced a higher CV error than lasso. The $\lambda_{1se}$ models applied stronger regularization, resulting in smaller coefficient norms and simpler models; however, this came at the cost of increased cross-validation error. Therefore, before inspecting the holdout responses, lasso with $\lambda_{min}$ is nominated as the core candidate, as it provides the best balance between predictive performance and interpretability through variable selection. This recommendation is based solely on the training data and will later be evaluated on the locked holdout set.
 
 The $\lambda_{min}$ and $\lambda_{1se}$ selection rules address different modeling objectives. The $\lambda_{min}$ rule selects the value of $\lambda$ that minimizes the cross-validation error and therefore prioritizes predictive accuracy. In contrast, the $\lambda_{1se}$ rule selects the largest $\lambda$ whose cross-validation error is within one standard error of the minimum, favouring a simpler and more stable model with stronger regularization. These rules therefore answer different decision questions: whether the primary objective is the best possible prediction or a more parsimonious model with comparable predictive performance. Predictive performance is assessed by the cross-validation error, whereas variable selection concerns which predictors remain in the model, and interpretability concerns how easily the resulting model can be understood. In our results, lasso with $\lambda_{min}$ achieved the lowest cross-validation error, while lasso with $\lambda_{1se}$ retained fewer predictors, illustrating the trade-off between prediction accuracy and model simplicity.
 
 ## 2E. Perturbation or stability check
 
-**Prediction before running the check:** [prediction]
+### Prediction: 
+Based on the theoretical properties of ridge and lasso regression, we expected the two methods to respond differently. Ridge regression was expected to remain stable because the L2 penalty distributes the effect across correlated predictors by shrinking their coefficients toward each other. Consequently, only small changes in prediction error and coefficient estimates were anticipated. 
+In contrast, lasso regression was expected to maintain similar prediction accuracy but perform variable selection by retaining only one predictor from the highly correlated pair. Therefore, we expected lasso's predictive performance to remain stable, while its selected variables could become less stable.
 
 ```{r perturbation}
-# Implement one allowed training-only stability check.
+x_train_new = data.frame(x_train)
+x_train_new$lcavol_new <- x_train_new$lcavol + rnorm(nrow(x_train), 0, 0.1)
+cor(x=x_train_new$lcavol, y = x_train_new$lcavol_new)
+
+ridge_new <- analysis_model(as.matrix(x_train_new), y_train, foldid=foldid, alpha = 0)
+lasso_new <- analysis_model(as.matrix(x_train_new), y_train, foldid=foldid, alpha = 1)
+
+df <- data.frame(
+  Ridge_Old = c(ridge$lambda_min, ridge$lambda_1se, ridge$mse_min, ridge$mse_1se, ridge$coef_min_norm, 
+                ridge$coef_1se_norm, ridge$cond_min, ridge$cond_1se, ridge$nonzero_min, ridge$nonzero_1se),
+  Ridge_New = c(ridge_new$lambda_min, ridge_new$lambda_1se, ridge_new$mse_min, ridge_new$mse_1se, 
+                ridge_new$coef_min_norm, ridge_new$coef_1se_norm, ridge_new$cond_min, ridge_new$cond_1se,
+              ridge_new$nonzero_min, ridge_new$nonzero_1se),
+  Lasso_Old = c(lasso_cv$lambda_min, lasso_cv$lambda_1se, lasso_cv$mse_min, lasso_cv$mse_1se, 
+                lasso_cv$coef_min_norm, lasso_cv$coef_1se_norm, lasso_cv$cond_min, lasso_cv$cond_1se, 
+                lasso_cv$nonzero_min, lasso_cv$nonzero_1se),
+  Lasso_New = c(lasso_new$lambda_min, lasso_new$lambda_1se, lasso_new$mse_min, lasso_new$mse_1se, 
+                lasso_new$coef_min_norm, lasso_new$coef_1se_norm, lasso_new$cond_min, lasso_new$cond_1se,
+                lasso_new$nonzero_min, lasso_new$nonzero_1se),
+  row.names = c("Lambda min", "Lambda 1se", "Mse min", "Mse 1se", "Coef min norm", "Coef 1se norm", "Condition number of min", "Condition number of 1se", "Nonzero min", "Nonzero 1se")
+)
+df <- round(df, 4)
+names(df) <- c("   Old Ridge   ", "   New Ridge   ", "   Old Lasso   ", "   New Lasso   ")
+knitr::kable(df)
 ```
 
-**Observed result and explanation:** [result]
+
+To investigate the stability of ridge and lasso regression, a perturbation experiment was conducted by adding a new predictor (lcavol_new) that is a noisy duplicate of lcavol. This creates a pair of highly correlated predictors while preserving nearly the same information.
+
+```{r}
+n <- max(nrow(ridge$coef_min), nrow(ridge_new$coef_min))
+df1 <- data.frame(
+  Ridge_Coef_Min = as.numeric(ridge$coef_min),
+  Ridge_Coef_1se = as.numeric(ridge$coef_1se)
+)
+df1 <- df1[1:n, ,drop=FALSE]
+df2 <- data.frame(
+  Ridge_New_Coef_Min = as.numeric(ridge_new$coef_min),
+  Ridge_New_Coef_1se = as.numeric(ridge_new$coef_1se)
+)
+df2 <- df2[1:n, ,drop=FALSE]
+df <- cbind(df1, df2, row.names = rownames(ridge_new$coef_min))
+df <- round(df, 4)
+names(df) <- c("Old Ridge's coef $\\lambda = \\lambda_{min}$","New Ridge's coef $\\lambda = \\lambda_{1se}$", "Old Ridge's coef $\\lambda = \\lambda_{min}$", "New Ridge's coef $\\lambda = \\lambda_{1se}$")
+
+knitr::kable(df)
+```
+```{r}
+n <- max(nrow(lasso_cv$coef_min), nrow(lasso_new$coef_min))
+
+df1 <- data.frame(
+  Lasso_Coef_Min = as.numeric(lasso_cv$coef_min),
+  Lasso_Coef_1se = as.numeric(lasso_cv$coef_1se)
+)
+df1 <- df1[1:n, ,drop=FALSE]
+df2 <- data.frame(
+  Lasso_New_Coef_Min = as.numeric(lasso_new$coef_min),
+  Lasso_New_Coef_1se = as.numeric(lasso_new$coef_1se)
+)
+df2 <- df2[1:n, ,drop=FALSE]
+
+df <- cbind(df1, df2, row.names = rownames(lasso_new$coef_min))
+df <- round(df, 4)
+names(df) <- c("Old Lasso's coef $\\lambda = \\lambda_{min}$", "New Lasso's coef $\\lambda = \\lambda_{1se}$", "Old Lasso's coef $\\lambda = \\lambda_{min}$", "New Lasso's coef $\\lambda = \\lambda_{1se}$")
+knitr::kable(df)
+```
+Comparing the coefficient estimates before and after introducing the duplicated predictor shows that the selected predictors remained almost identical. The original variable lcavol retained nearly the same coefficient, while the duplicated variable lcavol_new received a zero coefficient at $\lambda_{min}$ and only a negligible coefficient at $\lambda_{1se}$. Thus, contrary to the theoretical possibility that lasso may switch between highly correlated predictors, the variable selection remained stable in this experiment, although the resulting model remained sparse and achieved similar predictive performance.
+
+### Result. 
+Above table summarizes the results before and after introducing the duplicated predictor. For ridge regression, the optimal regularization parameter increased, the coefficient norms decreased, and the condition numbers remained relatively stable. The cross-validation errors changed only slightly, indicating that predictive performance was largely unaffected despite the additional multicollinearity. Ridge also retained all predictors, increasing the number of nonzero coefficients from eight to nine.
+
+For lasso regression, the cross-validation errors, tuning parameters, coefficient norms, and numbers of selected predictors changed only marginally. Prediction accuracy therefore remained stable after the perturbation. The condition number increased substantially because the duplicated predictor made the design matrix considerably more ill-conditioned. Nevertheless, lasso continued to produce a sparse model by selecting only a subset of predictors.
+
+The experimental results are largely consistent with the theoretical expectations. Ridge successfully handled the additional multicollinearity through stronger coefficient shrinkage while maintaining stable predictive performance and retaining all predictors. Lasso also maintained similar predictive accuracy and a sparse model, supporting the prediction that its prediction performance is robust to highly correlated predictors. If the selected predictor changed from lcavol to lcavol_new, this would further demonstrate the expected instability of lasso's variable selection among highly correlated predictors. Overall, the experiment confirms that ridge is more stable in handling multicollinearity, whereas lasso achieves greater interpretability through sparse variable selection while potentially exhibiting instability in the choice of correlated predictors.
 
 # Problem 3. Mathematical mechanisms
 
