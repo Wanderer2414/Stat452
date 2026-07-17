@@ -180,6 +180,24 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
     ridge = (largest + lambda) / (smallest + lambda)
   )
 }
+analysis_model <- function(x, y, alpha, foldid) {
+  model <- fit_cv_glmnet(x = x, y = y, alpha=alpha, foldid = foldid)
+  list(
+    model = model,
+    lambda_min = model$lambda.min,
+    mse_min = model$cvm[model$lambda == model$lambda.min],
+    cond_min = safe_condition_numbers(x, lambda = model$lambda.min)[2],
+    coef_min = coef(model, "lambda.min"),
+    coef_min_norm = sqrt(sum(coef(model, "lambda.min")[-1]^2)),
+    nonzero_min = count_nonzero(model, s="lambda.min"),
+    lambda_1se = model$lambda.1se,
+    cond_1se = safe_condition_numbers(x, lambda = model$lambda.1se)[2],
+    mse_1se = model$cvm[model$lambda == model$lambda.1se],
+    coef_1se = coef(model, "lambda.1se"),
+    coef_1se_norm = sqrt(sum(coef(model, "lambda.1se")[-1]^2)),
+    nonzero_1se = count_nonzero(model, s="lambda.1se")
+  )
+}
 ```
 
 # Problem 1. Prediction design and leakage control
@@ -187,6 +205,9 @@ safe_condition_numbers <- function(x, lambda, tol = 1e-10) {
 ## 1A. Target and predictors
 
 ```{r data-configuration}
+# The brief assigns prostate.csv to even-numbered groups.
+stopifnot(group_number %% 2L == 0L)
+
 config <- list(
   file = "prostate.csv",
   response = "lpsa",
@@ -200,23 +221,16 @@ if (anyNA(analysis_data)) stop("Declare a training-only missing-value plan.")
 if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
   stop("The assigned response and predictors must be numeric.")
 }
-
-
 ```
-
-**Assignment.** Group 04 is even-numbered, so the assigned dataset is
-`prostate.csv` and the assigned response is `lpsa`.
 
 **Dataset overview.** The `prostate.csv` file originates from the study by
 @stamey1989, which examined the relationship between prostate-specific antigen
 (PSA) levels and several clinical and histological measurements in men with
 clinically localized prostate cancer who underwent radical prostatectomy. The
 dataset contains `r nrow(data_raw)` observations and `r ncol(data_raw)` variables
---- one continuous response (`lpsa`) and eight candidate predictors covering
-tumour characteristics, patient demographics, and biopsy summaries. All variables
-are numeric and the dataset has no missing values, so no imputation or factor
-encoding is required. Individual variable definitions are detailed in the overview
-table below.
+--- one continuous response (`lpsa`) and `r length(predictors)` candidate
+predictors covering tumour characteristics, patient demographics, and biopsy
+summaries.
 
 **Response.** `lpsa` is the natural logarithm of prostate-specific antigen
 (ng/mL), a continuous serum marker measured before surgery. It is modelled on
@@ -235,36 +249,29 @@ lasso trade prediction error against coefficient stability and interpretability
 when several predictors are correlated.
 
 **Candidate predictors.** All `r length(predictors)` remaining variables are
-retained as candidate predictors. Every one is numeric, so the template's type
-guard passes and the design matrix needs no factor encoding. The variables are
-drawn from the clinical and pathological records described in @stamey1989
-(Table 1, pp. 1077--1078) and are summarized below.
+retained as candidate predictors. They are drawn from the clinical and
+pathological records described in @stamey1989:
 
-- `lcavol` --- log of cancer volume (log cm$^3$), estimated by ultrasound
+- `lcavol` -- log of cancer volume (log cm$^3$), estimated by ultrasound
   before surgery. Larger tumours are expected to produce more PSA.
-- `lweight` --- log of total prostate weight (log g), measured at
+- `lweight` -- log of total prostate weight (log g), measured at
   prostatectomy. Reflects overall prostate size, including both cancerous and
   non-cancerous tissue.
-- `age` --- patient age at the time of diagnosis (years).
-- `lbph` --- log of the amount of benign prostatic hyperplasia (log cm$^2$).
+- `age` -- patient age at the time of diagnosis (years).
+- `lbph` -- log of the amount of benign prostatic hyperplasia (log cm$^2$).
   BPH is non-cancerous prostate enlargement and can independently elevate PSA.
-- `svi` --- seminal vesicle invasion (binary: 1 = present, 0 = absent),
+- `svi` -- seminal vesicle invasion (binary: 1 = present, 0 = absent),
   indicating whether cancer has spread beyond the prostate into the seminal
   vesicles. This is a known marker of advanced disease.
-- `lcp` --- log of capsular penetration (log cm), measuring the extent to
+- `lcp` -- log of capsular penetration (log cm), measuring the extent to
   which cancer has invaded through the prostate capsule. Together with `svi`,
   it captures local disease progression.
-- `gleason` --- combined Gleason score (integer, ranging from 6 to 9 in this
+- `gleason` -- combined Gleason score (integer, ranging from 6 to 9 in this
   sample), the standard histological grading system for prostate cancer
   aggressiveness assigned by a pathologist from biopsy tissue.
-- `pgg45` --- percentage of Gleason grades 4 or 5 in the biopsy specimen
-  (percent, 0--100). Higher values indicate a larger proportion of
+- `pgg45` -- percentage of Gleason grades 4 or 5 in the biopsy specimen
+  (percent, 0-100). Higher values indicate a larger proportion of
   poorly-differentiated, aggressive tumour tissue.
-
-All eight predictors were recorded before or during the prostatectomy procedure
-and are defined independently of the serum PSA measurement, so none introduces
-outcome leakage. The overview table below records the unit, data type, number
-of distinct values, and missing-value count for each variable.
 
 **Exclusions.** The project brief requires only that `lpsa` itself be removed
 from the predictor set, and permits a further exclusion only when a statistical
@@ -282,9 +289,9 @@ whose PSA is not yet known --- which is precisely the deployment situation. The
 comparison itself would also become meaningless: OLS, ridge, and lasso would all
 be fitting the same leaked signal, so differences between them would reflect how
 each penalty shrinks that one dominant column rather than how each method handles
-genuine multicollinearity among clinical predictors. Because none of the eight
-candidate predictors in `prostate.csv` is derived from PSA, no additional
-exclusion beyond the response is warranted.
+genuine multicollinearity among clinical predictors. Because none of the
+`r length(predictors)` candidate predictors in `prostate.csv` is derived from
+PSA, no additional exclusion beyond the response is warranted.
 
 ```{r data-overview}
 meaning <- c(
@@ -329,10 +336,12 @@ n_duplicate_rows <- sum(duplicated(analysis_data))
 
 **Reading the table.** The file holds `r nrow(data_raw)` patients and
 `r ncol(data_raw)` columns. Three integrity results clear the way for the split.
-Every column is numeric, so the type guard above passes. No cell is missing
-(`Missing` is zero throughout), so no imputation is performed; the missing-value
-rule is still declared in 1B as a contingency, because a rule invented after
-seeing the data would be a decision made with holdout information. And
+Every column is numeric, so the type guard above passes and the design matrix
+needs no factor encoding. No cell is missing (`Missing` is zero throughout), so
+no imputation is performed; the contingency rule was nevertheless fixed in
+advance --- median imputation with medians computed on the training rows only ---
+because a rule invented after seeing the data would be a decision taken with
+holdout information. And
 `r n_duplicate_rows` rows are duplicated, so no patient is silently counted
 twice, which would otherwise inflate the apparent sample size and let the same
 record fall on both sides of the split. (`BPH` abbreviates benign prostatic
@@ -430,7 +439,7 @@ As a result, the holdout test set provides an unbiased assessment of predictive 
 
 ## 1C. Training-data exploration
 
-## Pairwise correlation among predictors
+### Pairwise correlation among predictors
 ```{r eda-cor}
 # Pairwise correlation among predictors
 cor_matrix <- cor(
@@ -446,18 +455,28 @@ knitr::kable(
 
 ```{r eda-heatmap}
 # Correlation heatmap
+layout(matrix(c(1, 2), nrow = 1), widths = c(8.5, 1.5))
+par(mar = c(5, 5, 2, 1))
 cor_matrix <- cor(train_df[, predictors], use = "complete.obs")
 
 image(1:ncol(cor_matrix), 1:ncol(cor_matrix), cor_matrix, 
       axes = FALSE, xlab = "", ylab = "", 
-      col = heat.colors(1000), main = "Correlation Heatmap of Predictors")
+      col = heat.colors(1000, rev=TRUE), main = "Correlation Heatmap of Predictors")
+
 axis(1, at = 1:ncol(cor_matrix), labels = colnames(cor_matrix), las = 2)
 axis(2, at = 1:ncol(cor_matrix), labels = colnames(cor_matrix), las = 1)
+
+par(mar = c(5, 1, 2, 3)) 
+legend_scale <- matrix(seq(0, 1, length.out = 100), nrow = 1)
+image(1, seq(0, 1, length.out = 100), legend_scale, 
+      col = heat.colors(20, rev=TRUE), axes = FALSE, xlab = "", ylab = "")
+
+axis(4, at = seq(0, 1, by = 0.1), las = 1, cex.axis = 0.8)
 ```
 The pairwise correlation matrix was examined to identify potential relationships among predictors. Most predictors showed weak to moderate correlations, suggesting limited redundancy between features. However, some stronger positive correlations were observed, particularly between gleason and pgg45 (r = 0.78), lcavol and lcp (r = 0.68), and svi and lcp (r = 0.69). These relationships indicate that some predictors may share related clinical information. Therefore, Variance Inflation Factor (VIF) analysis was further performed to assess the overall multicollinearity effect in the regression model.
 
 
-## Response Distribution 
+### Response Distribution 
 
 ```{r eda-response-dist}
 
@@ -573,34 +592,45 @@ Given the varying individual predictive strengths of these features and the mode
 
 ## 2A. OLS baseline
 
-```{r ols}
+```{r ols-fit}
 # Convert x_train (matrix) and y_train into a data frame for lm()
 train_data <- data.frame(y = y_train, x_train)
 
-# 1. Fit OLS on the training set
+# Fit ordinary least squares on the standardized training set
 ols_fit <- lm(y ~ ., data = train_data)
 
-# 2. Extract coefficients (tidy table via broom)
+# Tidy coefficient table (term, estimate, std.error, statistic, p.value)
 ols_coefs <- broom::tidy(ols_fit)
 kable(
   ols_coefs,
   digits = 4,
   caption = "OLS coefficient estimates on standardized training data."
 )
+```
 
-# 3. R-squared and Adjusted R-squared from the model summary
+**How to read this table.** Each row is one model term. `estimate` is a
+*standardized* slope: because every predictor was centred and scaled in 1B, it is
+the change in `lpsa` for a one standard-deviation increase in that predictor with
+the others held fixed, so the magnitudes are directly comparable down the column
+and the intercept equals the mean `lpsa` of the training set. The last three
+columns judge each estimate --- `std.error` is its standard error, `statistic` is
+the *t*-ratio (`estimate / std.error`), and `p.value` tests the null that the
+coefficient is zero, so a small value flags a predictor whose effect stands out
+from noise. Watch for any slope whose sign opposes the predictor's raw
+correlation with `lpsa`: that is an early fingerprint of the collinearity
+discussed below.
+
+```{r ols-metrics}
+# In-sample fit quality
 ols_summary <- summary(ols_fit)
-cat(sprintf("R-squared:          %.4f\n", ols_summary$r.squared))
-cat(sprintf("Adjusted R-squared: %.4f\n", ols_summary$adj.r.squared))
 
-# 4. Predict on the training set and evaluate training error
-ols_train_pred <- predict(ols_fit, newdata = train_data)
+# Training error (optimistic: the model has already seen these rows)
+ols_train_pred    <- predict(ols_fit, newdata = train_data)
 ols_train_metrics <- score_regression(y = y_train, prediction = ols_train_pred)
-cat(sprintf("Training RMSE:      %.4f\n", ols_train_metrics["RMSE"]))
-cat(sprintf("Training MAE:       %.4f\n", ols_train_metrics["MAE"]))
 
-# 5. Five-fold CV error using the shared foldid with ridge/lasso
-#    (lm() has no built-in CV, so we compute it manually)
+# Five-fold CV using the SAME foldid later passed to ridge and lasso.
+# lm() has no built-in CV, so refit on each four-fold training set and
+# score the held-out fold.
 K <- max(foldid)
 cv_mse_folds <- numeric(K)
 for (k in seq_len(K)) {
@@ -614,28 +644,63 @@ for (k in seq_len(K)) {
 }
 ols_cv_mse  <- mean(cv_mse_folds)
 ols_cv_rmse <- sqrt(ols_cv_mse)
-cat(sprintf("5-fold CV MSE:      %.4f\n", ols_cv_mse))
-cat(sprintf("5-fold CV RMSE:     %.4f\n", ols_cv_rmse))
+
+# Standard error of the CV-MSE across folds. cv.glmnet reports the same quantity
+# as `cvsd` for ridge and lasso, so 2D can compare all three on equal footing.
+ols_cv_se <- sd(cv_mse_folds) / sqrt(K)
+
+# Collect the fit and error numbers into one table
+ols_fit_summary <- tibble::tibble(
+  Quantity = c("R-squared", "Adjusted R-squared",
+               "Training RMSE", "Training MAE",
+               "5-fold CV RMSE", "5-fold CV MSE",
+               "5-fold CV SE (of MSE)"),
+  Value = c(ols_summary$r.squared, ols_summary$adj.r.squared,
+            ols_train_metrics[["RMSE"]], ols_train_metrics[["MAE"]],
+            ols_cv_rmse, ols_cv_mse, ols_cv_se)
+)
+kable(
+  ols_fit_summary,
+  digits = 4,
+  caption = "OLS in-sample fit and five-fold cross-validation error on the shared folds."
+)
 ```
 
-```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Observations exceeding the 4/n threshold (dashed line) are flagged as influential.", fig.height=4}
-# 6. Residual / influence diagnostic: Cook's distance
+**How to read this table.** The first two rows measure in-sample fit:
+`R-squared` is the fraction of training variance in `lpsa` the model explains,
+and `Adjusted R-squared` discounts it for the `r ncol(x_train)` predictors so
+that adding an uninformative one cannot inflate the score. The lower rows are prediction error
+on the scale of `lpsa`: RMSE penalizes large misses (it is the square root of
+MSE), while MAE is the mean absolute error and is less sensitive to outliers.
+Training and five-fold CV error are listed together so they can be read side by
+side --- the training figures are optimistic because the model was scored on the
+same rows it was fitted on, and the cross-validation note below explains how the
+CV figure is built and what the gap between the two means. The last row is the
+standard error of the CV-MSE across the five folds: it measures how precisely the
+CV error itself is pinned down, and `cv.glmnet` reports the same quantity
+(`cvsd`) for ridge and lasso, so 2D can compare all three methods with their
+error bars rather than by bare point estimates.
+
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4}
+# Residual / influence diagnostic: Cook's distance
 cooks_d   <- cooks.distance(ols_fit)
 n_train   <- nrow(train_data)
 threshold <- 4 / n_train
+
+# Flagged points are labelled by their ORIGINAL row in prostate.csv (via train_id)
+# so a flagged patient can be traced back to the raw data.
+flagged_pos <- which(cooks_d > threshold)
+flagged_row <- train_id[flagged_pos]
 
 plot(cooks_d,
      type = "h", lwd = 1.5, col = "steelblue",
      ylab = "Cook's distance", xlab = "Observation index",
      main = "Cook's Distance - OLS Baseline")
 abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
-text_idx <- which(cooks_d > threshold)
-if (length(text_idx)) {
-  text(text_idx, cooks_d[text_idx],
-       labels = text_idx, pos = 3, cex = 0.8, col = "firebrick")
+if (length(flagged_pos)) {
+  text(flagged_pos, cooks_d[flagged_pos],
+       labels = flagged_row, pos = 3, cex = 0.8, col = "firebrick")
 }
-cat(sprintf("Threshold (4/n):    %.4f\n", threshold))
-cat(sprintf("Influential points: %d of %d\n", length(text_idx), n_train))
 ```
 
 ```{r ols-helpers, echo=FALSE}
@@ -645,6 +710,22 @@ ols_pval <- function(term) ols_coefs$p.value[ols_coefs$term == term]
 
 # Compute lcavol–lcp correlation on training data (used in narrative)
 cor_lcavol_lcp <- cor(x_train[, "lcavol"], x_train[, "lcp"])
+
+# Quantify collinearity from this fit. VIF is scale-invariant, so standardizing
+# in 1B leaves it unchanged and these values match the VIF table reported in 1C.
+ols_vif      <- car::vif(ols_fit)
+max_vif      <- max(ols_vif)
+max_vif_term <- names(which.max(ols_vif))
+
+# Locate the most influential patient, and the heavy-prostate anomaly 1C flagged,
+# both reported by their original prostate.csv row number.
+n_flagged   <- length(flagged_pos)
+top_pos     <- flagged_pos[which.max(cooks_d[flagged_pos])]
+top_row     <- train_id[top_pos]
+lweight_pos <- which.max(train_df$lweight)   # the log-weight outlier seen in 1C
+lweight_row <- train_id[lweight_pos]
+lweight_g   <- exp(train_df$lweight[lweight_pos])
+lweight_is_flagged <- lweight_pos %in% flagged_pos
 
 # Identify non-significant predictors (p > 0.05, excluding intercept)
 nonsig_terms <- ols_coefs %>%
@@ -660,14 +741,12 @@ nonsig_min_p <- ols_coefs %>%
   pull(min_p)
 ```
 
-**Model summary.** The OLS model is fitted on the `r nrow(x_train)`
-standardized training observations with all `r ncol(x_train)` predictors.
-Because every predictor has been centred and scaled to unit (population)
-variance, the intercept equals the mean of `lpsa` in the training set, and
-each slope measures how much `lpsa` changes per one population-SD increase in
-that predictor, holding the remaining seven fixed.
+**Model summary.** The OLS model is fitted on the `r nrow(x_train)` standardized
+training observations using all `r ncol(x_train)` candidate predictors, with no
+penalty and no variable selection. It is therefore the unregularized baseline
+against which ridge and lasso are judged in 2B--2C.
 
-**Coefficient interpretation.** Two predictors dominate.
+**Coefficient interpretation.** Two predictors dominate, and one is borderline.
 
 - `lcavol` carries the largest standardized coefficient
   ($\hat{\beta} \approx `r round(ols_beta("lcavol"), 2)`$,
@@ -686,33 +765,69 @@ that predictor, holding the remaining seven fixed.
   $|t| < `r round(nonsig_max_t + 0.05, 1)`$ and
   $p > `r round(nonsig_min_p - 0.01, 2)`$.
 
-**Collinearity concern.** The near-zero and sign-reversed coefficient for
-`lcp` ($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) is noteworthy:
-biologically, greater capsular penetration should correlate positively with
-PSA, and indeed the marginal correlation is positive. The sign flip in OLS is
-a classic symptom of multicollinearity --- `lcavol` and `lcp` are strongly
-correlated ($r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set),
-so OLS distributes their shared variance unevenly. Regularization in 2B--2C
-is expected to stabilize these shared-variance coefficients.
+**Collinearity concern.** The near-zero and sign-reversed coefficient for `lcp`
+($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) deserves comment:
+biologically, greater capsular penetration should go with higher PSA, and its
+marginal correlation with `lpsa` is indeed positive. The collinearity behind the
+flip is *moderate rather than severe* --- the largest variance inflation factor
+is `r round(max_vif, 2)` (`r max_vif_term`) and `lcp`'s own is
+`r round(ols_vif[["lcp"]], 2)`, both comfortably below the conventional threshold
+of 5, consistent with the VIF table reported in 1C. Moderate sharing is still
+enough to flip *this particular* sign, because `lcp` carries almost no
+independent signal of its own: it is correlated with `lcavol` at
+$r \approx `r round(cor_lcavol_lcp, 2)`$ on the training set, so once `lcavol`
+has absorbed the shared variance what remains for `lcp` is close to noise
+($p \approx `r round(ols_pval("lcp"), 2)`$) and its sign is essentially free to
+move. Following the brief, this evidence is reported rather than removed; ridge
+and lasso in 2B--2C are expected to stabilize exactly these shared-variance
+coefficients.
 
-**Cross-validation error.** The five-fold CV RMSE is computed using the same
-`foldid` assignment that will be passed to `cv.glmnet` for ridge and lasso,
-ensuring a like-for-like comparison. Because OLS has no tuning parameter, there
-is a single CV-RMSE value rather than a curve. The gap between training RMSE and
-CV RMSE reflects the optimism of the in-sample fit: a large gap would signal
-overfitting, while a small gap would suggest the eight-predictor model
-generalizes reasonably well given the available sample.
+**Cross-validation error.** The five-fold CV RMSE
+(`r round(ols_cv_rmse, 3)`) is computed using the same `foldid` assignment that
+will be passed to `cv.glmnet` for ridge and lasso, ensuring a like-for-like
+comparison. Because OLS has no tuning parameter, there is a single CV-RMSE value
+rather than a curve. It exceeds the training RMSE
+(`r round(ols_train_metrics[["RMSE"]], 3)`) by only about
+`r round(ols_cv_rmse - ols_train_metrics[["RMSE"]], 3)` on the log-PSA scale.
+This modest optimism gap reflects mild in-sample overfitting: it is small enough
+to suggest the `r ncol(x_train)`-predictor model already generalizes reasonably
+well on the `r nrow(x_train)`-row training sample, and 2B--2C will test whether
+shrinkage narrows the gap further.
 
-**Influence diagnostic.** The Cook's distance plot flags observations whose
-removal would substantially shift the fitted coefficients. The conventional
-threshold $4/n$ is shown as a dashed line. Any point above this line has
-outsized leverage, large residual, or both. In a sample of only
-`r nrow(x_train)` training rows, even one or two influential points can
-destabilize an unpenalized fit --- particularly for the collinear predictors
-`lcavol`/`lcp` whose coefficient estimates are already fragile. These
-influential observations are retained in the analysis (not removed) because
-they are clinically valid patients; their effect is instead mitigated by the
-regularization introduced in 2B--2C.
+That single CV number is itself an average of `r K` noisy pieces. The per-fold
+MSE ranges from `r round(min(cv_mse_folds), 2)` to `r round(max(cv_mse_folds), 2)`
+around a mean of `r round(ols_cv_mse, 2)`, giving a standard error of
+`r round(ols_cv_se, 3)`. With only about `r round(nrow(x_train) / K)` patients in
+each held-out fold that spread is unsurprising, but it fixes the resolution of
+every comparison that follows: two methods whose CV-MSE differ by less than
+roughly one standard error are not distinguishable on this evidence, and 2D must
+weigh the ridge and lasso results against that yardstick rather than declare a
+winner on a bare point estimate.
+
+**Influence diagnostic.** Cook's distance asks how far the whole fitted
+coefficient vector would move if one patient were deleted, so it combines a large
+residual and high leverage into a single number. Against the conventional
+threshold $4/n \approx `r round(threshold, 3)`$, `r n_flagged` of the
+`r n_train` training patients are flagged, the most influential being original
+row `r top_row` (Cook's $D \approx `r round(max(cooks_d), 2)`$).
+
+This connects the exploratory work in 1C to the fit. The heavy-prostate anomaly
+singled out there --- original row `r lweight_row`, whose prostate weight of
+`r round(lweight_g)` g (log `r round(train_df$lweight[lweight_pos], 2)`) is far
+above every other patient while its `lpsa` is only
+`r round(train_df$lpsa[lweight_pos], 2)` --- is
+`r if (lweight_is_flagged) "indeed among the flagged points" else "not flagged"`,
+with Cook's $D \approx `r round(cooks_d[lweight_pos], 2)`$. The oddity spotted in
+the plots therefore measurably moves the unpenalized fit rather than being merely
+cosmetic. In a sample of only `r nrow(x_train)` rows, such points bend
+coefficients easily --- especially for the collinear pair `lcavol`/`lcp`, whose
+estimates are already fragile.
+
+All flagged observations are retained rather than removed: they are clinically
+valid patients, and the brief requires the evidence to be explained rather than
+deleted. Their leverage is instead absorbed by the shrinkage introduced in
+2B--2C, which is one of the concrete things the regularized fits are expected to
+improve.
 
 ## 2B. Ridge
 
@@ -720,8 +835,9 @@ regularization introduced in 2B--2C.
 
 ```{r ridge}
 
-ridge <- fit_cv_glmnet(x = x_train, y = y_train, alpha=0, foldid = foldid)
-plot(ridge)
+  
+ridge <- analysis_model(x = x_train, y = y_train, alpha=0, foldid = foldid)
+plot(ridge$model)
 
 ```
 The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalently, as $\lambda$ decreases), suggesting that reducing the regularization strength improves predictive performance. The left dashed line indicates $\lambda_{1se}$, which selects a more regularized model with prediction error within one standard error of the minimum, while the right dashed line indicates $\lambda_{min}$, which yields the lowest cross-validation error.
@@ -729,13 +845,9 @@ The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalent
 ### Lambda min:
 ```{r}
 
-g <- crossprod(x_train)
-eigen <- eigen(g)$value
-
-lambda <- ridge$lambda.min
-cat("Lambda min: ",lambda, "\n")
-cat("MSE: ", ridge$cvm[ridge$lambda == lambda], "\n")
-cat("Condition number:", (max(eigen) + lambda)/(min(eigen) + lambda), "\n")
+cat("Lambda min: ",ridge$lambda_min, "\n")
+cat("MSE: ", ridge$mse_min, "\n")
+cat("Condition number:", ridge$cond_min , "\n")
 
 ```
 With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} \approx 0.61$, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
@@ -743,13 +855,9 @@ With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its m
 ### Lambda 1se:
 ```{r}
 
-g <- crossprod(x_train)
-eigen <- eigen(g)$value
-
-lambda <- ridge$lambda.1se
-cat("Lambda 1se: ",lambda, "\n")
-cat("MSE: ", ridge$cvm[ridge$lambda == lambda], "\n")
-cat("Condition number:", (max(eigen) + lambda)/(min(eigen) + lambda), "\n")
+cat("Lambda 1se: ",ridge$lambda_1se, "\n")
+cat("MSE: ", ridge$mse_1se, "\n")
+cat("Condition number:", ridge$cond_1se, "\n")
 
 ```
 Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \approx 1.02$, the condition number decreased only slightly from 20.2 to 19.07, indicating minimal improvement in numerical stability. In contrast, the cross-validation MSE increased from 0.61 to 0.66. Therefore, the additional regularization provided by $\lambda_{1se}$ offers little practical benefit while reducing predictive performance.
@@ -759,8 +867,8 @@ Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \a
 
 data.frame(
   OLS = as.numeric(coef(ols_fit)),
-  Lambda_Min = as.numeric(coef(ridge, "lambda.min")),
-  Lambda_Max = as.numeric(coef(ridge, "lambda.1se")),
+  Lambda_Min = as.numeric(ridge$coef_min),
+  Lambda_Max = as.numeric(ridge$coef_1se),
   row.names = names(ols_fit$coefficients)
 )
 ```
@@ -768,10 +876,10 @@ data.frame(
 Compared with the OLS model, Ridge regression shrinks most regression coefficients toward zero, reducing their magnitudes through the regularization penalty. This shrinkage helps alleviate the effects of multicollinearity while retaining all predictors in the model. Most coefficients exhibit the expected behavior by moving closer to zero as the regularization strength increases. However, two coefficients show notable exceptions. The coefficient of \textbf{lcp} changes from a small negative value in the OLS model to positive values under Ridge regression. In addition, the coefficient of \textbf{gleason} increases in magnitude, moving further away from zero rather than shrinking like the other coefficients. These changes suggest that the effects of \textbf{lcp} and \textbf{gleason} are influenced by multicollinearity with other predictors. As Ridge simultaneously estimates all coefficients under a penalty, it redistributes the effects among correlated variables, causing some coefficients to increase in magnitude or even change sign despite the overall shrinkage trend.
 
 ```{R}
-n_vars <- nrow(ridge$glmnet.fit$beta)
-plot(ridge$glmnet.fit)
+n_vars <- nrow(ridge$model$glmnet.fit$beta)
+plot(ridge$model$glmnet.fit)
 legend("topleft", 
-       legend = rownames(ridge$glmnet.fit$beta), 
+       legend = rownames(ridge$model$glmnet.fit$beta), 
        col = 1:n_vars, 
        lty = 1, 
        cex = 0.6)
@@ -787,13 +895,13 @@ To address multicollinearity, Ridge impose an $L_2$ penalty on the regression co
 
 
 ```{r lasso-fit}
-lasso_cv <- fit_cv_glmnet(
+lasso_cv <- analysis_model(
     x = x_train,
     y = y_train,
     alpha = 1,
     foldid = foldid
 )
-plot(lasso_cv)
+plot(lasso_cv$model)
 
 ```
 
@@ -808,9 +916,10 @@ Based on the 5-fold cross-validation curve generated for the Lasso regression mo
 ### Analysis of $\lambda_{\text{min}}$
 
 ```{r lasso-min}
-lambda_min <- lasso_cv$lambda.min
-coef(lasso_cv, s="lambda.min")
-count_nonzero(lasso_cv, s="lambda.min")
+
+lasso_cv$lambda_min
+lasso_cv$coef_min
+lasso_cv$nonzero_min
 ```
 
 
@@ -823,13 +932,10 @@ The retained predictors suggest that tumor volume (lcavol) is the most influenti
 Overall, $\lambda_{\text{min}}$ produces the model with the lowest cross-validation error while preserving a moderate number of predictors, offering a balance between prediction accuracy and model complexity.
 
 ```{r lasso-cv-error-min}
-cv_mse_min <- lasso_cv$cvm[
-    lasso_cv$lambda==
-    lasso_cv$lambda.min
-]
-cv_mse_min
+
+lasso_cv$mse_min
 ```
-The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(cv_mse_min, 4)`**. This value corresponds to $\lambda_{\text{min}} = `r round(lasso_cv$lambda.min, 4)`$ and represents the estimated prediction error obtained during model tuning using the training data.
+The minimum five-fold cross-validation Mean Squared Error (CV-MSE) achieved by the Lasso model is **`r round(lasso_cv$mse_min, 4)`**. This value corresponds to $\lambda_{\text{min}} = $`r round(lasso_cv$lambda_min, 4)` and represents the estimated prediction error obtained during model tuning using the training data.
 
 A lower CV-MSE indicates better expected predictive performance on unseen data. Since $\lambda_{\text{min}}$ is selected to minimize this metric, it is the tuning parameter that prioritizes prediction accuracy over model simplicity.
 
@@ -837,41 +943,29 @@ A lower CV-MSE indicates better expected predictive performance on unseen data. 
 ### Analysis of $\lambda_{\text{1se}}$
 
 ```{r lasso-1se}
-lambda_1se <- lasso_cv$lambda.1se
-coef(lasso_cv, s="lambda.1se")
-count_nonzero(lasso_cv, s="lambda.1se")
+lasso_cv$lambda_1se
+lasso_cv$coef_1se
+lasso_cv$nonzero_1se
 ```
-The one-standard-error rule selects $\lambda_{\text{1se}} = `r round(lambda_1se, 4)`$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
+The one-standard-error rule selects $\lambda_{\text{1se}} = `r round(lasso_cv$lambda_1se, 4)`$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
 
 Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the variables lbph and pgg45 are removed, resulting in a more parsimonious and interpretable model with only a small loss in predictive performance.
 
 ```{r lasso-cv-error-1se}
-cv_mse_1se <- lasso_cv$cvm[
-    lasso_cv$lambda==
-    lasso_cv$lambda.1se
-]
-cv_mse_1se
+lasso_cv$mse_1se
 ```
 The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, resulting in a five-fold cross-validation Mean Squared Error (CV-MSE) of r round(cv_mse_1se, 4). Although this error is slightly higher than that of $\lambda_{\text{min}}$, it remains within one standard error of the minimum while providing a more conservative model.
 
 Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the predictors lbph and pgg45 are removed, resulting in a simpler and more interpretable model with only a modest reduction in predictive performance.
-
 ### Coefficient Path
 
 ```{r lasso-coef-path}
-lasso_fit <- glmnet(
-    x_train,
-    y_train,
-    alpha=1,
-    standardize=FALSE,
-      
-)
 
-plot(lasso_fit, xvar = "lambda", label = TRUE)
+plot(lasso_cv$model$glmnet.fit, xvar = "lambda", label = TRUE)
 
 legend("topleft", 
-       legend = rownames(lasso_fit$beta), 
-       col = 1:nrow(lasso_fit$beta), 
+       legend = rownames(lasso_cv$model$glmnet.fit$beta), 
+       col = 1:nrow(lasso_cv$model$glmnet.fit$beta), 
        lty = 1, 
        cex = 0.7,
        lwd = 2,
@@ -884,23 +978,128 @@ Overall, the coefficient path shows that as $-\log(\lambda)$ increases (equivale
 
 Among the predictors, **lcavol** enters the model first and consistently has the largest coefficient, indicating that it is the most influential predictor of **lpsa**. **svi** and **lweight** also become active relatively early and maintain positive coefficients throughout the path. In contrast, **age, lbph, lcp, gleason,** and **pgg45** enter only when the penalty becomes sufficiently small, suggesting that their contributions are comparatively weaker and less stable.
 
-## 2D 
+## 2D Controlled comparison and locked core model
 
 ```{r core-comparison}
 # Build a comparison from training/CV quantities only.
+ols_summary <- data.frame(
+  tunning_rule = "None",
+  lambda = 0,
+  cv_error = ols_cv_mse,
+  cond = safe_condition_numbers(x_train, lambda = 0)[2],
+  coefficient_norm = sqrt(sum(coef(ols_fit)[-1]^2)),
+  num_non_zero = sum(coef(ols_fit) != 0, na.rm = TRUE) - 1,
+  row.names = "OLS"
+)
+
+ridge_summary <- data.frame(
+  tunning_rule = c("lambda.min", "lambda.1se"),
+  lambda = c(ridge$lambda_min, ridge$lambda_1se),
+  cv_error = c(ridge$mse_min, ridge$mse_1se),
+  cond = c(ridge$cond_min, ridge$cond_1se),
+  coefficient_norm = c(sqrt(sum(ridge$coef_min[-1]^2)),sqrt(sum(ridge$coef_1se[-1]^2))),
+  num_non_zero = c(ridge$nonzero_min,ridge$nonzero_1se),
+  row.names = c("Ridge"," ")
+)
+lasso_summary <- data.frame(
+  tunning_rule = c("lambda.min", "lambda.1se"),
+  lambda = c(lasso_cv$lambda_min, lasso_cv$lambda_1se),
+  cv_error = c(lasso_cv$mse_min, lasso_cv$mse_1se),
+  cond = c(lasso_cv$cond_min, lasso_cv$cond_1se),
+  coefficient_norm = c(sqrt(sum(lasso_cv$coef_min)),sqrt(sum(lasso_cv$coef_1se))),
+  num_non_zero = c(lasso_cv$nonzero_min, lasso_cv$nonzero_1se),
+  row.names = c("Lasso"," ")
+)
+
+knitr::kable(rbind(ols_summary,ridge_summary,lasso_summary))
+
 ```
 
-**Core model nominated before holdout evaluation:** [method and reason]
+Based on the training comparison, lasso with $\lambda_{min}$ achieved the lowest cross-validation error (`r lasso_cv$mse_min`) while reducing the number of predictors from eight to five. Ridge with $\lambda_{min}$ improved numerical stability compared with OLS by reducing both the coefficient norm and the condition number, but it retained all predictors and produced a higher CV error than lasso. The $\lambda_{1se}$ models applied stronger regularization, resulting in smaller coefficient norms and simpler models; however, this came at the cost of increased cross-validation error. Therefore, before inspecting the holdout responses, lasso with $\lambda_{min}$ is nominated as the core candidate, as it provides the best balance between predictive performance and interpretability through variable selection. This recommendation is based solely on the training data and will later be evaluated on the locked holdout set.
+
+The $\lambda_{min}$ and $\lambda_{1se}$ selection rules address different modeling objectives. The $\lambda_{min}$ rule selects the value of $\lambda$ that minimizes the cross-validation error and therefore prioritizes predictive accuracy. In contrast, the $\lambda_{1se}$ rule selects the largest $\lambda$ whose cross-validation error is within one standard error of the minimum, favouring a simpler and more stable model with stronger regularization. These rules therefore answer different decision questions: whether the primary objective is the best possible prediction or a more parsimonious model with comparable predictive performance. Predictive performance is assessed by the cross-validation error, whereas variable selection concerns which predictors remain in the model, and interpretability concerns how easily the resulting model can be understood. In our results, lasso with $\lambda_{min}$ achieved the lowest cross-validation error, while lasso with $\lambda_{1se}$ retained fewer predictors, illustrating the trade-off between prediction accuracy and model simplicity.
 
 ## 2E. Perturbation or stability check
 
-**Prediction before running the check:** [prediction]
+### Prediction: 
+Based on the theoretical properties of ridge and lasso regression, we expected the two methods to respond differently. Ridge regression was expected to remain stable because the L2 penalty distributes the effect across correlated predictors by shrinking their coefficients toward each other. Consequently, only small changes in prediction error and coefficient estimates were anticipated. 
+In contrast, lasso regression was expected to maintain similar prediction accuracy but perform variable selection by retaining only one predictor from the highly correlated pair. Therefore, we expected lasso's predictive performance to remain stable, while its selected variables could become less stable.
 
 ```{r perturbation}
-# Implement one allowed training-only stability check.
+x_train_new = data.frame(x_train)
+x_train_new$lcavol_new <- x_train_new$lcavol + rnorm(nrow(x_train), 0, 0.1)
+cor(x=x_train_new$lcavol, y = x_train_new$lcavol_new)
+
+ridge_new <- analysis_model(as.matrix(x_train_new), y_train, foldid=foldid, alpha = 0)
+lasso_new <- analysis_model(as.matrix(x_train_new), y_train, foldid=foldid, alpha = 1)
+
+df <- data.frame(
+  Ridge_Old = c(ridge$lambda_min, ridge$lambda_1se, ridge$mse_min, ridge$mse_1se, ridge$coef_min_norm, 
+                ridge$coef_1se_norm, ridge$cond_min, ridge$cond_1se, ridge$nonzero_min, ridge$nonzero_1se),
+  Ridge_New = c(ridge_new$lambda_min, ridge_new$lambda_1se, ridge_new$mse_min, ridge_new$mse_1se, 
+                ridge_new$coef_min_norm, ridge_new$coef_1se_norm, ridge_new$cond_min, ridge_new$cond_1se,
+              ridge_new$nonzero_min, ridge_new$nonzero_1se),
+  Lasso_Old = c(lasso_cv$lambda_min, lasso_cv$lambda_1se, lasso_cv$mse_min, lasso_cv$mse_1se, 
+                lasso_cv$coef_min_norm, lasso_cv$coef_1se_norm, lasso_cv$cond_min, lasso_cv$cond_1se, 
+                lasso_cv$nonzero_min, lasso_cv$nonzero_1se),
+  Lasso_New = c(lasso_new$lambda_min, lasso_new$lambda_1se, lasso_new$mse_min, lasso_new$mse_1se, 
+                lasso_new$coef_min_norm, lasso_new$coef_1se_norm, lasso_new$cond_min, lasso_new$cond_1se,
+                lasso_new$nonzero_min, lasso_new$nonzero_1se),
+  row.names = c("Lambda min", "Lambda 1se", "Mse min", "Mse 1se", "Coef min norm", "Coef 1se norm", "Condition number of min", "Condition number of 1se", "Nonzero min", "Nonzero 1se")
+)
+df <- round(df, 4)
+names(df) <- c("   Old Ridge   ", "   New Ridge   ", "   Old Lasso   ", "   New Lasso   ")
+knitr::kable(df)
 ```
 
-**Observed result and explanation:** [result]
+
+To investigate the stability of ridge and lasso regression, a perturbation experiment was conducted by adding a new predictor (lcavol_new) that is a noisy duplicate of lcavol. This creates a pair of highly correlated predictors while preserving nearly the same information.
+
+```{r}
+n <- max(nrow(ridge$coef_min), nrow(ridge_new$coef_min))
+df1 <- data.frame(
+  Ridge_Coef_Min = as.numeric(ridge$coef_min),
+  Ridge_Coef_1se = as.numeric(ridge$coef_1se)
+)
+df1 <- df1[1:n, ,drop=FALSE]
+df2 <- data.frame(
+  Ridge_New_Coef_Min = as.numeric(ridge_new$coef_min),
+  Ridge_New_Coef_1se = as.numeric(ridge_new$coef_1se)
+)
+df2 <- df2[1:n, ,drop=FALSE]
+df <- cbind(df1, df2, row.names = rownames(ridge_new$coef_min))
+df <- round(df, 4)
+names(df) <- c("Old Ridge's coef $\\lambda = \\lambda_{min}$","New Ridge's coef $\\lambda = \\lambda_{1se}$", "Old Ridge's coef $\\lambda = \\lambda_{min}$", "New Ridge's coef $\\lambda = \\lambda_{1se}$")
+
+knitr::kable(df)
+```
+```{r}
+n <- max(nrow(lasso_cv$coef_min), nrow(lasso_new$coef_min))
+
+df1 <- data.frame(
+  Lasso_Coef_Min = as.numeric(lasso_cv$coef_min),
+  Lasso_Coef_1se = as.numeric(lasso_cv$coef_1se)
+)
+df1 <- df1[1:n, ,drop=FALSE]
+df2 <- data.frame(
+  Lasso_New_Coef_Min = as.numeric(lasso_new$coef_min),
+  Lasso_New_Coef_1se = as.numeric(lasso_new$coef_1se)
+)
+df2 <- df2[1:n, ,drop=FALSE]
+
+df <- cbind(df1, df2, row.names = rownames(lasso_new$coef_min))
+df <- round(df, 4)
+names(df) <- c("Old Lasso's coef $\\lambda = \\lambda_{min}$", "New Lasso's coef $\\lambda = \\lambda_{1se}$", "Old Lasso's coef $\\lambda = \\lambda_{min}$", "New Lasso's coef $\\lambda = \\lambda_{1se}$")
+knitr::kable(df)
+```
+Comparing the coefficient estimates before and after introducing the duplicated predictor shows that the selected predictors remained almost identical. The original variable lcavol retained nearly the same coefficient, while the duplicated variable lcavol_new received a zero coefficient at $\lambda_{min}$ and only a negligible coefficient at $\lambda_{1se}$. Thus, contrary to the theoretical possibility that lasso may switch between highly correlated predictors, the variable selection remained stable in this experiment, although the resulting model remained sparse and achieved similar predictive performance.
+
+### Result. 
+Above table summarizes the results before and after introducing the duplicated predictor. For ridge regression, the optimal regularization parameter increased, the coefficient norms decreased, and the condition numbers remained relatively stable. The cross-validation errors changed only slightly, indicating that predictive performance was largely unaffected despite the additional multicollinearity. Ridge also retained all predictors, increasing the number of nonzero coefficients from eight to nine.
+
+For lasso regression, the cross-validation errors, tuning parameters, coefficient norms, and numbers of selected predictors changed only marginally. Prediction accuracy therefore remained stable after the perturbation. The condition number increased substantially because the duplicated predictor made the design matrix considerably more ill-conditioned. Nevertheless, lasso continued to produce a sparse model by selecting only a subset of predictors.
+
+The experimental results are largely consistent with the theoretical expectations. Ridge successfully handled the additional multicollinearity through stronger coefficient shrinkage while maintaining stable predictive performance and retaining all predictors. Lasso also maintained similar predictive accuracy and a sparse model, supporting the prediction that its prediction performance is robust to highly correlated predictors. If the selected predictor changed from lcavol to lcavol_new, this would further demonstrate the expected instability of lasso's variable selection among highly correlated predictors. Overall, the experiment confirms that ridge is more stable in handling multicollinearity, whereas lasso achieves greater interpretability through sparse variable selection while potentially exhibiting instability in the choice of correlated predictors.
 
 # Problem 3. Mathematical mechanisms
 
@@ -910,7 +1109,8 @@ $$
 X \in \mathbb{R}^{n\times p}
 $$
 
-be the standardized training design matrix with $n$ observations and $p$ predictors.
+be the standardized training design matrix with $n$ observations and $p$
+predictors.
 
 Let
 
@@ -928,19 +1128,9 @@ be the coefficient vector.
 
 ## 3A. Ridge and conditioning
 
-*Write the ridge derivation. Define dimensions and explain uniqueness.*
-
-```{r ridge-conditioning}
-# Use x_train and the fitted ridge lambda.min.
-# safe_condition_numbers(x_train, lambda = ...)
-```
-
-## 3A. Ridge and conditioning
-
 ### Ridge objective
 
 The ridge objective function is
-
 $$
 Q_\lambda(b)
 =
@@ -1115,9 +1305,6 @@ $$
 Because the same positive constant is added to every eigenvalue, the smallest eigenvalue is shifted away from zero, reducing the condition number. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the ridge estimator is guaranteed to have a unique solution.
 
 From the table above, the ridge matrix should have a smaller condition number than the original Gram matrix. This demonstrates that ridge regularization improves the numerical conditioning of the optimization problem, leading to more stable coefficient estimates.
-## 3B. Lasso optimality and soft thresholding
-
-*Derive the zero/nonzero optimality conditions and the orthonormal-design formula.*
 
 ## 3B. Lasso optimality and soft thresholding
 
@@ -1703,7 +1890,7 @@ cat("Remaining hidden features:", ncol(H_train), "\n")
 The original 8 predictors were transformed into 200 fixed ReLU hidden features using randomly generated hidden-layer weights and biases. Hidden features with zero variance on the training set were removed because they contain no predictive information. As a result, 199 hidden features were retained and standardized using statistics computed from the training set only before model fitting.
 
 
-  ```{r relu-ridge}
+```{r relu-ridge}
   ridge_relu_cv <- fit_cv_glmnet(
     H_train,
     y_train,
@@ -1728,8 +1915,8 @@ The original 8 predictors were transformed into 200 fixed ReLU hidden features u
     lambda = ridge_relu_lambda_1se,
     standardize = FALSE
   )
-  
-  ```
+
+```
 
 Ridge regression ($\alpha = 0$) was fitted on the 199 retained ReLU hidden features using the shared five-fold cross-validation folds, yielding `lambda.min` = `r round(ridge_relu_lambda_min, 4)` and `lambda.1se` = `r round(ridge_relu_lambda_1se, 4)`. Since the $L_2$ penalty shrinks coefficients smoothly without coordinatewise thresholding, ridge is expected to retain all 199 hidden features at both tuning choices, distributing weight across correlated random units rather than selecting a sparse subset.
 
@@ -1935,8 +2122,8 @@ models_summary <- data.frame(
   ),
   CV_MSE = c(
     ols_cv_mse,
-    min(ridge$cvm),
-    min(lasso_cv$cvm),
+    min(ridge$model$cvm),
+    min(lasso_cv$model$cvm),
     best_orig_enet_cv_mse,
     min(ridge_relu_cv$cvm),
     min(lasso_relu_cv$cvm),
@@ -1958,8 +2145,9 @@ The Lasso regression was chosen as the optimal model because it yielded the mini
 
 ```{r final-holdout-evaluation}
 pred_ols <- predict(ols_fit, newdata = data.frame(x_test))
-pred_ridge <- as.numeric(predict(ridge, newx = x_test, s = "lambda.min"))
-pred_lasso <- as.numeric(predict(lasso_cv, newx = x_test, s = "lambda.min"))
+
+pred_ridge <- as.numeric(predict(ridge$model, newx = x_test, s = "lambda.min"))
+pred_lasso <- as.numeric(predict(lasso_cv$model, newx = x_test, s = "lambda.min"))
 
 best_orig_enet_model <- elastic_fits[[paste0("alpha_", best_orig_enet_alpha)]]
 pred_enet <- as.numeric(predict(best_orig_enet_model, newx = x_test, s = "lambda.min"))
