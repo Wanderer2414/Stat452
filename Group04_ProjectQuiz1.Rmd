@@ -2251,11 +2251,21 @@ Section 4C is a linear read-out on a *fixed* random feature map: the hidden weig
 
 ## 5A. Reproduction record
 
-```text
 1. Open a clean R session.
-2. [Exact commands and folder layout.]
-3. Render GroupXX_ProjectQuiz1.Rmd.
+
+2. Ensure the project uses the following relative directory structure:
+   - `Group04_ProjectQuiz1.Rmd` (main report)
+   - `data/prostate.csv` (original data)
+
+3. Install the required packages if necessary:
+
+```{r warning=FALSE, message = FALSE}
+   install.packages(c("tidyverse", "glmnet", "broom", "knitr", "car"))
 ```
+4. Render `Group04_ProjectQuiz1.Rmd`. Fixed random seeds (split: 240204, CV: 240304, features: 240404) guarantee reproducible train/test splits, cross-validation folds, and ReLU feature generation.
+
+5. The holdout responses (`y_test`) remain isolated throughout data exploration, preprocessing, feature engineering, model fitting, and tuning. They first enter the computation in **Section 4D (Final Holdout Evaluation)** when calculating the final RMSE and MAE of the locked models.
+
 
 ## 5B. Recommendation and limitations
 
