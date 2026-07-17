@@ -1167,34 +1167,25 @@ For lasso regression, the cross-validation errors, tuning parameters, coefficien
 The experimental results are largely consistent with the theoretical expectations. Ridge successfully handled the additional multicollinearity through stronger coefficient shrinkage while maintaining stable predictive performance and retaining all predictors. Lasso also maintained similar predictive accuracy and a sparse model, supporting the prediction that its prediction performance is robust to highly correlated predictors. If the selected predictor changed from lcavol to lcavol_new, this would further demonstrate the expected instability of lasso's variable selection among highly correlated predictors. Overall, the experiment confirms that ridge is more stable in handling multicollinearity, whereas lasso achieves greater interpretability through sparse variable selection while potentially exhibiting instability in the choice of correlated predictors.
 
 # Problem 3. Mathematical mechanisms
-
 Let
-
 $$
 X \in \mathbb{R}^{n\times p}
 $$
-
 be the standardized training design matrix with $n$ observations and $p$
 predictors.
-
 Let
-
 $$
 y\in\mathbb{R}^{n}
 $$
-
 be the response vector and
-
 $$
 b\in\mathbb{R}^{p}
 $$
-
 be the coefficient vector.
 
 ## 3A. Ridge and conditioning
 
 ### Ridge objective
-
 The ridge objective function is
 $$
 Q_\lambda(b)
@@ -1203,9 +1194,7 @@ Q_\lambda(b)
 +
 \frac{\lambda}{2}\|b\|^2.
 $$
-
 Taking the gradient,
-
 $$
 \nabla Q_\lambda(b)
 =
@@ -1213,9 +1202,7 @@ $$
 +
 \lambda b.
 $$
-
 Setting the gradient equal to zero,
-
 $$
 \frac1nX^TXb
 -
@@ -1225,9 +1212,7 @@ $$
 =
 0.
 $$
-
 Rearranging,
-
 $$
 \left(
 \frac1nX^TX
@@ -1237,23 +1222,17 @@ $$
 =
 \frac1nX^Ty.
 $$
-
 Define
-
 $$
 G=\frac1nX^TX,
 \qquad
 z=\frac1nX^Ty.
 $$
-
 Hence,
-
 $$
 (G+\lambda I)b=z,
 $$
-
 and therefore
-
 $$
 \boxed{
 \hat b
@@ -1261,120 +1240,84 @@ $$
 (G+\lambda I)^{-1}z.
 }
 $$
-
 Since \(G\) is positive semidefinite and \(\lambda>0\),
-
 $$
 G+\lambda I
 $$
-
 is positive definite and therefore invertible. Hence the ridge estimator is unique.
-
 The spectral condition number is
-
 $$
 \kappa_2(G)
 =
 \frac{\mu_{\max}}
 {\mu_{\min}},
 $$
-
 while ridge gives
-
 $$
 \kappa_2(G+\lambda I)
 =
 \frac{\mu_{\max}+\lambda}
 {\mu_{\min}+\lambda}.
 $$
-
 where
-
 $$
 \mu_{\max}=\max_i\mu_i
 $$
-
 is the **largest eigenvalue** of the Gram matrix \(G\), and
-
 $$
 \mu_{\min}=\min_i\mu_i
 $$
-
 is the **smallest (positive) eigenvalue** of \(G\).
 
----
-
 ### Condition Number and Numerical Stability
-
 The Gram matrix is defined as
-
 $$
 G=\frac1nX^TX.
 $$
-
 Since \(G\) is symmetric and positive semidefinite, all of its eigenvalues are non-negative. Let the eigenvalues of \(G\) be
-
 $$
 \mu_1,\mu_2,\ldots,\mu_p,
 $$
-
 where
-
 $$
 \mu_{\max}=\max_i\mu_i,
 \qquad
 \mu_{\min}=\min_i\mu_i.
 $$
-
 The spectral condition number is defined as
-
 $$
 \kappa_2(G)
 =
 \frac{\mu_{\max}}
 {\mu_{\min}}.
 $$
-
 This quantity measures how sensitive the solution of a linear system is to small perturbations in the input data. A large condition number indicates that the Gram matrix is close to singular, so the estimated coefficients may change dramatically even when the training data are only slightly perturbed. Conversely, a small condition number indicates that the matrix is well-conditioned and the regression coefficients are numerically stable.
-
 Ridge regression replaces the Gram matrix by
-
 $$
 G+\lambda I.
 $$
-
 If the eigenvalues of \(G\) are
-
 $$
 \mu_1,\mu_2,\ldots,\mu_p,
 $$
-
 then the eigenvalues of the ridge matrix become
-
 $$
 \mu_1+\lambda,\,
 \mu_2+\lambda,\,
 \ldots,\,
 \mu_p+\lambda.
 $$
-
 Hence, the condition number becomes
-
 $$
 \kappa_2(G+\lambda I)
 =
 \frac{\mu_{\max}+\lambda}
 {\mu_{\min}+\lambda}.
 $$
-
 Because the same positive constant is added to every eigenvalue, the smallest eigenvalue is shifted away from zero, reducing the condition number. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the ridge estimator is guaranteed to have a unique solution.
-
 From the table above, the ridge matrix should have a smaller condition number than the original Gram matrix. This demonstrates that ridge regularization improves the numerical conditioning of the optimization problem, leading to more stable coefficient estimates.
-
 ## 3B. Lasso optimality and soft thresholding
-
 Lasso regression estimates the regression coefficients by minimizing
-
 $$
 Q_\lambda(b)
 =
@@ -1382,41 +1325,28 @@ Q_\lambda(b)
 +
 \lambda\|b\|_1,
 $$
-
 where
-
 $$
 \|b\|_1
 =
 \sum_{j=1}^{p}|b_j|,
 $$
-
 and \(\lambda>0\) controls the amount of regularization.
-
 Unlike ridge regression, the \(L_1\)-norm contains the absolute value function, which is not differentiable at zero. Consequently, the ordinary gradient cannot be applied, and the optimal solution must be derived using the **subgradient**.
-
 ### Step 1. Rewrite the Objective Function
-
 Assume that the predictors have been centered, standardized, and satisfy the orthonormal design condition
-
 $$
 \frac1nX^TX=I.
 $$
-
 Equivalently,
-
 $$
 X^TX=nI.
 $$
-
 Define
-
 $$
 z=\frac1nX^Ty.
 $$
-
 The squared error term can be expanded as
-
 $$
 \begin{aligned}
 \|y-Xb\|^2
@@ -1424,9 +1354,7 @@ $$
 &= y^Ty - 2b^TX^Ty + b^TX^TXb.
 \end{aligned}
 $$
-
 Substituting into the objective function,
-
 $$
 \begin{aligned}
 Q_\lambda(b)
@@ -1443,21 +1371,15 @@ b^TX^TXb
 \lambda\sum_{j=1}^{p}|b_j|.
 \end{aligned}
 $$
-
 Using
-
 $$
 X^TX=nI
 $$
-
 and
-
 $$
 z=\frac1nX^Ty,
 $$
-
 the objective becomes
-
 $$
 Q_\lambda(b)
 =
@@ -1469,17 +1391,12 @@ b^Tz
 +
 C,
 $$
-
 where
-
 $$
 C=\frac1{2n}y^Ty
 $$
-
 is a constant independent of \(b\).
-
 Expanding by coordinates,
-
 $$
 Q_\lambda(b)
 =
@@ -1494,20 +1411,13 @@ z_jb_j
 +
 C.
 $$
-
 Therefore, each coefficient can be optimized independently.
-
-
 ### Step 2. Compute the Subgradient
-
 Since
-
 $$
 |b_j|
 $$
-
 is not differentiable at zero, its subgradient is
-
 $$
 \partial|b_j|
 =
@@ -1517,9 +1427,7 @@ $$
 -1,&b_j<0.
 \end{cases}
 $$
-
 The first-order optimality condition becomes
-
 $$
 0
 \in
@@ -1527,113 +1435,73 @@ b_j-z_j
 +
 \lambda\partial|b_j|.
 $$
-
 The solution is obtained by considering three cases.
-
-
 #### Case 1. Positive coefficient
-
 Suppose
-
 $$
 b_j>0.
 $$
-
 Then
-
 $$
 \partial|b_j|=1,
 $$
-
 and
-
 $$
 b_j-z_j+\lambda=0.
 $$
-
 Hence
-
 $$
 b_j=z_j-\lambda.
 $$
-
 For this solution to remain positive,
-
 $$
 z_j>\lambda.
 $$
 
-
-
 #### Case 2. Negative coefficient
-
 Suppose
-
 $$
 b_j<0.
 $$
-
 Then
-
 $$
 \partial|b_j|=-1,
 $$
-
 and
-
 $$
 b_j-z_j-\lambda=0.
 $$
-
 Therefore,
-
 $$
 b_j=z_j+\lambda.
 $$
-
 Since the coefficient must remain negative,
-
 $$
 z_j<-\lambda.
 $$
 
-
 #### Case 3. Zero coefficient
-
 Suppose
-
 $$
 b_j=0.
 $$
-
 The subgradient condition becomes
-
 $$
 0
 \in
 -z_j+\lambda[-1,1].
 $$
-
 This is satisfied whenever
-
 $$
 |z_j|\le\lambda.
 $$
-
 Therefore,
-
 $$
 b_j=0.
 $$
-
 This explains why lasso can produce exact zero coefficients.
-
-
-
 ### Step 3. Soft-Thresholding Solution
-
 Combining the three cases,
-
 $$
 \hat b_j=
 \begin{cases}
@@ -1642,9 +1510,7 @@ z_j-\lambda,&z_j>\lambda,\\
 z_j+\lambda,&z_j<-\lambda.
 \end{cases}
 $$
-
 The piecewise solution can be written compactly as
-
 $$
 \boxed{
 \hat b_j
@@ -1653,96 +1519,60 @@ $$
 \left(|z_j|-\lambda\right)_+
 }
 $$
-
 where
-
 $$
 (a)_+=\max(a,0).
 $$
-
 This expression is known as the **soft-thresholding operator**.
 
----
-
 ### Interpretation
-
 The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
-
 $$
 |z_j|\le\lambda,
 $$
-
 the coefficient is shrunk completely to zero, meaning that the corresponding predictor is removed from the model. Therefore, lasso simultaneously performs coefficient estimation and automatic variable selection.
-
 In contrast, ridge regression continuously shrinks coefficients toward zero,
-
 $$
 \hat b_{\text{ridge}}
 =
 (G+\lambda I)^{-1}z,
 $$
-
 but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
 
----
-
 ### Interpretation
-
 The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
-
 $$
 |z_j|\le\lambda,
 $$
-
 the coefficient is shrunk completely to zero, meaning that the corresponding predictor is removed from the model. Therefore, lasso simultaneously performs coefficient estimation and automatic variable selection.
-
 In contrast, ridge regression continuously shrinks coefficients toward zero,
-
 $$
 \hat b_{\text{ridge}}
 =
 (G+\lambda I)^{-1}z,
 $$
-
 but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
-
-
 ## 3C. Connect algebra to evidence
-
-*Connect one specific numerical result to Problem 3A or 3B.*
-
-
-## 3C. Connect algebra to evidence
-
 Section 3A showed that ridge regression improves the conditioning of the Gram matrix by adding a positive constant \(\lambda\) to every eigenvalue. Consequently, the theoretical condition number changes from
-
 $$
 \kappa_2(G)
 =
 \frac{\mu_{\max}}
 {\mu_{\min}}
 $$
-
 to
-
 $$
 \kappa_2(G+\lambda I)
 =
 \frac{\mu_{\max}+\lambda}
 {\mu_{\min}+\lambda}.
 $$
-
 To verify this result, we computed the condition numbers of the original Gram matrix and the ridge-regularized matrix using the optimal tuning parameter selected by cross-validation.
-
 ```{r ridge-evidence, echo=FALSE, warning=FALSE, message=FALSE}
 G <- crossprod(x_train) / nrow(x_train)
-
 eig <- eigen(G)$values
-
 lambda <- ridge$lambda_min
-
 kappa_before <- max(eig) / min(eig)
-
 kappa_after <- (max(eig) + lambda) /
                (min(eig) + lambda)
 
@@ -1756,7 +1586,7 @@ knitr::kable(
 )
 ```
 
-The results show that the condition number decreases from **20.596** for the original Gram matrix to **8.936** after ridge regularization. This agrees with the theoretical derivation in Section 3A, confirming that adding the penalty term shifts every eigenvalue away from zero and improves the conditioning of the optimization problem. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the estimated regression coefficients become more reliable.
+The results show that the condition number decreases from `r kappa_before` for the original Gram matrix to `r kappa_after` after ridge regularization. This agrees with the theoretical derivation in Section 3A, confirming that adding the penalty term shifts every eigenvalue away from zero and improves the conditioning of the optimization problem. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the estimated regression coefficients become more reliable.
 
 # Problem 4. Elastic net and a neural-feature bridge
 ## 4A. Research question and source map: $L_1$ penalties and sparse weights.
