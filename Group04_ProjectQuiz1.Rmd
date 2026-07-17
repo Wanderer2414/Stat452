@@ -44,10 +44,10 @@ We confirm that every group member can explain the submitted analysis. AI use is
 
 | Student | ID | Main contributions | Verification performed |
 |---|---|---|---|
-| Nguyen Thi Yen Nhi | 24125071 | [Work] | [Check] |
-| Nguyen Khang Thinh | 24125104 | [Work] | [Check] |
-| Nguyen Van Tinh | 24125106 | [Work] | [Check] |
-| Nguyen Le Quoc Huy | 24125100 | [Work] | [Check] |
+| Nguyen Thi Yen Nhi | 24125071 | 1A (Data analysis), 2A(OLS), 4E (Question Explanation) |Verify AI texts|
+| Nguyen Khang Thinh | 24125104 | 1C (EDA), 2C (Lasso), 4B (Elastic Net), 4C (ReLU features), 4D (Holdout Eval) | Verified code & AI logs |
+| Nguyen Van Tinh | 24125106 | 1B(Data split), 3A(Ridge), 3B(Lasso), 3C(Algebra Evidence) | Verify mathematical problems |
+| Nguyen Le Quoc Huy | 24125100 | 2B(Ridge), 2D(Model comparison), 2E(Stabability Check), 4A(Paper research) | Verify the project workflow & code |
 
 # Abstract {-}
 
@@ -370,7 +370,7 @@ its units, not for being uninformative. This is precisely why the design matrix
 is standardized in 1B, using centering and scaling constants computed on the
 training rows only.
 
-## 1B. Split and train-only preprocessing
+## 1B. Split and preprocessing plan
 
 ```{r split-and-scale}
 split <- split_rows(nrow(analysis_data), seed = seeds$split)
@@ -601,7 +601,7 @@ Weak Trends: age and lbph exhibit highly dispersed data clouds with very flat re
 
 Given the varying individual predictive strengths of these features and the moderate structural correlations (e.g., between pgg45 and lcp), will an $L_{1}$ penalty (Lasso) completely eliminate the structurally weaker predictors like age to produce a strictly sparse model, or will an $L_{2}$ penalty (Ridge) prove more stable against the identified high-leverage anomaly in lweight?
 
-# Problem 2. OLS, ridge, and lasso
+# Problem 2. OLS, Ridge, and Lasso
 
 ## 2A. OLS baseline
 
@@ -903,7 +903,7 @@ deleted. Their leverage is instead absorbed by the shrinkage introduced in
 2B--2C, which is one of the concrete things the regularized fits are expected to
 improve.
 
-## 2B. Ridge
+## 2B. Ridge regression
 
 ### Cross-validation curve:
 
@@ -985,7 +985,7 @@ As $\lambda$ increases, all regression coefficients are progressively shrunk tow
 
 To address multicollinearity, Ridge impose an $L_2$ penalty on the regression coefficients. Rather than assigning a large coefficient to one correlated predictor and a small coefficient to another, Ridge shrinks the coefficients simultaneously and redistributes their effects among the correlated variables. Consequently, the coefficient estimates become more stable and less sensitive to small changes in the data.
 
-## 2C. Lasso
+## 2C. Lasso regression
 
 
 ### Model fitting and cross-validation
@@ -2010,7 +2010,7 @@ Table 4C summarizes ridge, lasso, and elastic net (alpha = `r best_relu_enet_alp
 
 Overall, lasso achieves the sparsest representation with only a modest increase in CV-MSE relative to elastic net (0.6184 vs. 0.6084), while ridge attains a similar error (0.6128) using the full hidden-feature set. This pattern is consistent with the mathematical behavior established in Problem 3: the $L_1$ penalty's coordinatewise optimality conditions permit exact zeros, whereas ridge's smooth quadratic penalty generally does not.
 
-## 4D. Locked declaration and final holdout evaluation
+## 4D. Locked the analysis and evaluate once
 
 - Preprocessing: A 80/20 train-test split using predefined seed. All predictos and ReLU hidden features was standardized using training statistics only. Hidden features with zero variances were removed.
 
@@ -2132,7 +2132,7 @@ The model in Section 4C is effectively a neural network frozen halfway through: 
 
 # Problem 5. Report quality and reproducibility
 
-## 5A. Reproduction record
+## 5A. Reproducible submission
 
 1. Open a clean R session.
 
@@ -2150,7 +2150,7 @@ The model in Section 4C is effectively a neural network frozen halfway through: 
 5. The holdout responses (`y_test`) remain isolated throughout data exploration, preprocessing, feature engineering, model fitting, and tuning. They first enter the computation in **Section 4D (Final Holdout Evaluation)** when calculating the final RMSE and MAE of the locked models.
 
 
-## 5B. Recommendation and limitations
+## 5B. Statistical coummunication
 
 ### Final Recommendation
 
