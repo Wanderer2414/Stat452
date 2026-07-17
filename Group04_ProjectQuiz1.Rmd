@@ -2172,9 +2172,29 @@ Prediction vs. Interpretation:
 
 ## 5C. AI verification record
 
-| AI-assisted item | How it was checked | Evidence | Modification or rejection |
-|---|---|---|---|
-| [Item] | [Method] | [Test/source/output] | [Decision] |
+```{=latex}
+\begingroup
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{0.30\linewidth} p{0.24\linewidth} p{0.32\linewidth}}
+\hline
+AI-assisted item & How it was checked & Modification or rejection \\
+\hline
+Fixed R/R Markdown syntax and logic bugs in RStudio (ridge condition-number formula, broken inline R expressions in the lasso section, duplicated 3A/3B headers) &
+Document failed to compile before the fix; compiled successfully with correct output after applying it &
+Accepted the fix after independently recomputing the value and confirming it matched; rewrote the surrounding narrative ourselves \\
+\hline
+Grammar and phrasing checks on the narrative sections & &
+Accepted wording-only fixes; rejected any suggestion that altered a numeric claim or added an unverified statement \\
+\hline
+Explained ridge/lasso theory (L2/L1 penalties, KKT conditions, soft-thresholding) to support the Problem 3 derivations & &
+Used only as a study aid; the derivations and citations in 3A/3B are our own, referencing the primary sources directly \\
+\hline
+Explained the train-only, population-SD standardization approach (\texttt{fit\_scaler}/\texttt{apply\_scaler}) and why it prevents leakage & &
+Adopted the explanation; kept the existing \texttt{fit\_scaler} implementation unchanged \\
+\hline
+\end{tabular}
+\endgroup
+```
 
 # Preflight and session information {-}
 
