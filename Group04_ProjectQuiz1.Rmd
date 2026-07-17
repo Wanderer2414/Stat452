@@ -25,6 +25,7 @@ header-includes:
   - \usepackage{fvextra}
   - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\}}
   - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
+  - \usepackage{float}
 ---
 
 <!--
@@ -734,7 +735,7 @@ move. Following the brief, this evidence is reported rather than removed; ridge
 and lasso in 2B--2C are expected to stabilize exactly these shared-variance
 coefficients.
 
-```{r ols-qq, fig.cap="Normal Q-Q plot of the OLS standardized residuals against the 45-degree reference line. Points lie on the line when the errors are normal; the three largest departures are labelled with their row number in the original prostate.csv.", fig.height=4}
+```{r ols-qq, fig.cap="Normal Q-Q plot of the OLS standardized residuals against the 45-degree reference line. Points lie on the line when the errors are normal; the three largest departures are labelled with their row number in the original prostate.csv.", fig.height=4, fig.pos="H", out.extra=""}
 # Residual diagnostic: the t-tests behind the p-values above assume roughly
 # normal errors, so the assumption is checked rather than taken on trust.
 # rstandard() divides each residual by its own standard error, which removes the
@@ -806,9 +807,7 @@ roughly one standard error are not distinguishable on this evidence, and 2D must
 weigh the ridge and lasso results against that yardstick rather than declare a
 winner on a bare point estimate.
 
-
-
-```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4}
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4, fig.pos="H", out.extra=""}
 # Residual / influence diagnostic: Cook's distance
 cooks_d   <- cooks.distance(ols_fit)
 n_train   <- nrow(train_data)
@@ -1729,7 +1728,7 @@ G <- crossprod(x_train) / nrow(x_train)
 
 eig <- eigen(G)$values
 
-lambda <- ridge$lambda.min
+lambda <- ridge$lambda_min
 
 kappa_before <- max(eig) / min(eig)
 
