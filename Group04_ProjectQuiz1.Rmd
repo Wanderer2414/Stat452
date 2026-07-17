@@ -3,8 +3,10 @@ title: "ASESII 24A02 Project-Based Quiz 1"
 subtitle: "Ridge, Lasso, and Regularization for Neural Features"
 author: |
   | Group 04
-  | Nguyen Thi Yen Nhi (24125071), Nguyen Khang Thinh (24125104)
-  | Nguyen Van Tinh (24125106), Nguyen Le Quoc Huy (24125100)
+  | Nguyen Thi Yen Nhi (24125071)
+  | Nguyen Khang Thinh (24125104)
+  | Nguyen Van Tinh (24125106)
+  | Nguyen Le Quoc Huy (24125100)
 date: "`r format(Sys.Date(), '%Y-%m-%d')`"
 output:
   pdf_document:
@@ -25,6 +27,7 @@ header-includes:
   - \usepackage{fvextra}
   - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\}}
   - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
+  - \usepackage{float}
 ---
 
 <!--
@@ -734,7 +737,7 @@ move. Following the brief, this evidence is reported rather than removed; ridge
 and lasso in 2B--2C are expected to stabilize exactly these shared-variance
 coefficients.
 
-```{r ols-qq, fig.cap="Normal Q-Q plot of the OLS standardized residuals against the 45-degree reference line. Points lie on the line when the errors are normal; the three largest departures are labelled with their row number in the original prostate.csv.", fig.height=4}
+```{r ols-qq, fig.cap="Normal Q-Q plot of the OLS standardized residuals against the 45-degree reference line. Points lie on the line when the errors are normal; the three largest departures are labelled with their row number in the original prostate.csv.", fig.height=4, fig.pos="H", out.extra=""}
 # Residual diagnostic: the t-tests behind the p-values above assume roughly
 # normal errors, so the assumption is checked rather than taken on trust.
 # rstandard() divides each residual by its own standard error, which removes the
@@ -806,9 +809,7 @@ roughly one standard error are not distinguishable on this evidence, and 2D must
 weigh the ridge and lasso results against that yardstick rather than declare a
 winner on a bare point estimate.
 
-
-
-```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4}
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4, fig.pos="H", out.extra=""}
 # Residual / influence diagnostic: Cook's distance
 cooks_d   <- cooks.distance(ols_fit)
 n_train   <- nrow(train_data)
@@ -1729,7 +1730,7 @@ G <- crossprod(x_train) / nrow(x_train)
 
 eig <- eigen(G)$values
 
-lambda <- ridge$lambda.min
+lambda <- ridge$lambda_min
 
 kappa_before <- max(eig) / min(eig)
 
@@ -1752,11 +1753,17 @@ The results show that the condition number decreases from **20.596** for the ori
 
 ## 4A. Research question and source map
 
-**Research direction:** [weight decay / sparse weights / pruning / dropout]
+**Research direction - $\ell_1$ penalties and sparse weights.** Section 4C fits ridge, lasso, and elastic net on a *fixed* random ReLU feature map, so the only trained parameters are the output (read-out) weights $\beta$ that combine the hidden features. This makes 4C a controlled setting for one question: **when an $\ell_1$ penalty drives some read-out weights to exactly zero, is that the same kind of sparsity a trained neural network gets from weight decay, from pruning, or from dropout - and where does the analogy break?** The source map records the specific methodological claims Section 4E relies on, each tied to a primary source and locator. Han, Pool, Tran, and Dally (2015) is a primary paper not cited in the project brief; the remaining rows anchor the individual points of 4E. Every row cites a peer-reviewed methodological result - an estimator, a proposition, or an algorithm with a stated guarantee - never a software manual or package vignette.
 
-| Claim | Exact primary source and locator | What it establishes | What it does not establish |
-|---|---|---|---|
-| [Claim] | [Citation, section/page/equation] | [Support] | [Boundary] |
+| Claim (used in 4E) | Exact primary source and locator | What it establishes | What it does not establish |
+|:-----------------|:-------------------------------------|:---------------------------|:--------------------------|
+| Ridge is an $\ell_2$ penalty on the trained weights. | @hoerl1970, ridge estimator $\hat\beta(k)=(X'X+kI)^{-1}X'y$, *Technometrics* 12(1):55--67. | Penalising $\lVert\beta\rVert_2^2$ shrinks and stabilises estimates under correlated predictors. | That the equivalence survives an adaptive optimiser that rescales each coordinate's step. |
+| Weight decay is *not* identical to an $\ell_2$ term under adaptive optimisers. | @loshchilov2019, Prop. 1 (SGD: $\lambda'=\lambda/\alpha$) vs Prop. 2 (no equivalent $\ell_2$ when preconditioner $M_t\neq kI$); AdamW in Algorithm 2. | For SGD the two coincide; for Adam-style updates they diverge, so decoupled weight decay (AdamW) is a distinct operation. | That `glmnet`'s penalised least squares (used here) is affected - it is not an adaptive optimiser. |
+| An $\ell_1$ penalty gives a coefficient vector with exact zeros. | @tibshirani1996, Sec. 2, Eq. (1): minimise RSS s.t. $\sum_j\lvert\beta_j\rvert\le t$; "tends to produce coefficients that are exactly 0." | $\ell_1$ selects among the *coefficients it penalises* - here the read-out weights. | That zeroing an output weight sparsifies the input-to-hidden matrix $A$ (never penalised). |
+| Elastic net interpolates $\ell_1$ and $\ell_2$. | @zou2005, naïve elastic-net penalty $\lambda_1\lVert\beta\rVert_1+\lambda_2\lVert\beta\rVert_2^2$, *JRSS-B* 67(2). | A mixed penalty keeps grouped correlated features while still zeroing some (the 4B/4C middle ground). | That its mix is optimal for this task; $\alpha$ is chosen by CV, not by theory. |
+| Pruning *permanently* removes low-magnitude connections. | @han2015, Sec. 3 / Fig. 2: sub-threshold connections "are removed ... converting a dense network into a sparse network," then retrain; @han2016, Sec. 2. | Pruning is a permanent structural edit of a *trained* network, stored and retrained sparsely. | That the lasso's data-driven zeros in 4C are identical to post-hoc magnitude pruning of a trained net. |
+| Dropout randomly masks activations during training. | @srivastava2014, Abstract and Sec. 2 / Fig. 2: units dropped "temporarily"; at test all units present, weights $\times p$. | Dropout is a stochastic *training-time* regulariser, reversed at test time. | That dropout deletes units permanently - at test all units return (it is not pruning). |
+| A random-feature model fixes the hidden map and learns only a linear read-out. | @rahimi2007, Sec. 3, Algorithm 1: $z(x)=\sqrt{2/D}[\cos(\omega_1'x+b_1),\dots]$, $\omega$ drawn once from $p(\omega)$; $f(x)=w'z(x)$. | With the map frozen, fitting is *linear* in the read-out weights - exactly the 4C setup ($A$, bias frozen; $\beta$ learned). | That a frozen-feature model behaves like a network whose hidden layers are trained by backpropagation. |
 
 ## 4B. Elastic net on original predictors
 
@@ -2167,7 +2174,17 @@ Overall, lasso achieves the sparsest representation with only a modest increase 
 
 ## 4E. Deep-learning connection and limitations
 
-*Distinguish penalty, weight decay, output-weight sparsity, pruning, dropout, and a trained deep network. Cite the sources from 4A and discuss at least two limitations.*
+Section 4C is a linear read-out on a *fixed* random feature map: the hidden weights `A` and biases were drawn once from `seeds$features` (`r seeds$features`) and never updated, so only the output weights $\beta$ that combine the `r ncol(H_train)` retained ReLU features were learned, by ridge, lasso, and elastic net [@rahimi2007]. The four points below read the neural-network vocabulary against that specific set-up.
+
+**1. An $\ell_2$ penalty on the output weights is a ridge penalty, but weight decay is not always the same thing.** The ridge fit in 4C minimises squared loss plus $\lambda\lVert\beta\rVert_2^2$ - an $\ell_2$ penalty on the trained read-out weights, which is exactly the ridge estimator of @hoerl1970. Under plain gradient descent, adding this term is equivalent to *weight decay*: shrinking every weight toward zero by a fixed fraction each step. @loshchilov2019 make the equivalence precise for SGD (their Prop. 1, with decay $\lambda'=\lambda/\alpha$), but their Prop. 2 shows it breaks for adaptive optimisers such as Adam: once the update preconditions each coordinate by its own gradient history ($M_t\neq kI$), no single $\ell_2$ coefficient reproduces weight decay, which is why decoupled weight decay (AdamW, their Algorithm 2) is a distinct operation. Here the distinction is moot - `glmnet` solves the penalised least-squares problem exactly - so our "ridge" really is an $\ell_2$/ridge penalty; the caveat would matter only if this read-out were retrained with an adaptive neural-network optimiser.
+
+**2. A zero output weight drops one fixed feature; it does not create sparse input-to-hidden weights.** Lasso puts an $\ell_1$ penalty on $\beta$ and sends some entries to exactly zero [@tibshirani1996, Sec. 2, Eq. 1]. Because the scalar prediction is $\hat y=\beta_0+\sum_j \beta_j\,h_j(x)$ with $h_j(x)=\max(a_j'x+c_j,0)$ fixed, setting $\beta_j=0$ simply removes the $j$-th ReLU unit from the sum - at `lambda.min` lasso keeps only about `r lasso_min_active` of the `r ncol(H_train)` units. But $a_j$, the $j$-th row of the frozen matrix `A` (the input-to-hidden weights), was a random draw and is never penalised [@rahimi2007], so it stays a *dense* random vector: every surviving hidden unit still mixes all `r ncol(x_train)` standardized inputs. The sparsity is entirely in the read-out layer. "Ten active features" therefore means ten retained fixed units, not a network that has learned to depend on a few inputs. Genuine input-to-hidden sparsity would require penalising or pruning the entries of $A$ itself - for example a group penalty on each row $a_j$, or the magnitude-based connection pruning of @han2015 applied directly to $A$ - and this experiment does neither: $A$ is fixed *before* the response is ever seen, so no data-driven criterion ever touches it.
+
+**3. Dropout masks activations during training and is not permanent pruning.** Dropout randomly zeroes activations *only during training*, sampling a different thinned network on each step, and at test time restores every unit with its outgoing weights scaled by the keep-probability $p$ - nothing is removed [@srivastava2014, Abstract and Sec. 2, Fig. 2]. Pruning is the opposite operation: after training, connections whose magnitude falls below a threshold are *permanently* deleted and the network is stored and retrained as a sparse structure [@han2015, Sec. 3, Fig. 2; @han2016, Sec. 2]. The lasso zeros in 4C resemble pruning - a permanent, magnitude-driven removal of read-out weights - and not dropout, which keeps all weights and only perturbs activations while learning. Even that resemblance is only partial: lasso's zeros fall out of a *single* convex fit's subgradient stationarity condition - the soft-thresholding rule derived in Problem 3B - whereas pruning first trains an unconstrained dense network and only *afterward* thresholds and retrains it [@han2015, Sec. 3]. One sparsity is a by-product of how the objective is optimised; the other is a structural edit applied once optimisation has already finished.
+
+**4. One frozen hidden layer says nothing about a fully trained deep network.** Two separate gaps sit between 4C and a "deep" network. *Depth*: this design has exactly one nonlinear transformation, $\mathrm{ReLU}(Ax+c)$, feeding a linear read-out; a deep network stacks several such transformations, each one consuming the *previous layer's learned output*, which is a qualitatively richer function class than a single fixed layer can express. *Training*: even that one layer is not learned - $A$ and $c$ are frozen at values drawn once from `seeds$features`, and only $\beta$ is fit, which is precisely the random-feature construction of @rahimi2007: with the map fixed, prediction reduces to the linear model $f(x)=w'z(x)$. A fully trained deep network updates every layer by backpropagation and can reshape its representation to the task; this experiment deliberately holds out both the depth and that adaptation. So any finding here - for instance that the nonlinear expansion barely moved the cross-validation error - is a statement about *one fixed random layer*, not evidence about what a multi-layer, end-to-end trained network would achieve.
+
+**Limitations.** *(i) Sensitivity to the random-feature seed.* The `r ncol(H_train)` features depend entirely on the single seed `r seeds$features`. Random-feature theory treats $z(x)$ as a Monte-Carlo estimate whose approximation error shrinks as the number of features $D$ grows [@rahimi2007, Claim 1]; with only $M=$ `r M` features and one draw we have a single Monte-Carlo sample, so the active-feature counts and CV-MSE in 4C could shift under a different seed. Fixing one seed is required for reproducibility, but it also means we cannot report how much these results vary across feature draws - a genuine boundary on the conclusions. *(ii) A single, untrained random map confounds two explanations.* Elastic net on the `r ncol(x_train)` original predictors reached a lower cross-validation MSE (Table 4B) than any model on the `r ncol(H_train)` ReLU features (Table 4C). Because `A` was drawn once and never adapted to `lpsa`, the experiment cannot separate two accounts of that gap: a nonlinear expansion is genuinely not useful for these predictors, or this *one* random, un-adapted expansion happened not to align with the signal. A trained hidden layer, or a larger and re-sampled random-feature bank, could in principle distinguish the two; this design cannot. *(iii) Small holdout.* With `r length(train_id)` training and only `r length(test_id)` test patients, the 4D holdout metrics carry wide uncertainty; the final ranking can be confirmed only weakly, and gaps smaller than the cross-validation standard error should not be over-interpreted. Point 4 above is itself a fourth limitation: results from one frozen layer do not transfer to trained deep networks.
 
 # Problem 5. Report quality and reproducibility
 
