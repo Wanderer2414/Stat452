@@ -1711,7 +1711,7 @@ The results show that the condition number decreases from **20.596** for the ori
 alpha_grid <- c(0.10, 0.25, 0.50, 0.75, 0.90)
 # Fitting
 elastic_fits <- lapply(alpha_grid, function(a) {
-  fit_cv_glmnet(x = x_train, y = y_train, alpha = a, foldid = foldid)
+  analysis_model(x = x_train, y = y_train, alpha = a, foldid = foldid)
 })
 names(elastic_fits) <- paste0("alpha_", alpha_grid)
 
@@ -1719,7 +1719,7 @@ par(mfrow = c(2, 3))
 
 for (i in seq_along(alpha_grid)) {
   plot(
-    elastic_fits[[i]],
+    elastic_fits[[i]]$model,
   )
   
   title(
@@ -1743,7 +1743,7 @@ Visually, the differences in the performance valleys among the various $\alpha$ 
 ```{r elastic-sum}
 elastic_summary <- map_dfr(seq_along(alpha_grid), function(i) {
   a   <- alpha_grid[i]
-  fit <- elastic_fits[[i]]
+  fit <- elastic_fits[[i]]$model
 
   tibble(
     alpha        = a,
@@ -1777,7 +1777,7 @@ Therefore, the final model selected for subsequent evaluation on the unseen test
 par(mfrow = c(2, 3), mar = c(4, 4, 6, 2))
 
 for (i in seq_along(alpha_grid)) {
-  fit <- elastic_fits[[i]]$glmnet.fit
+  fit <- elastic_fits[[i]]$model$glmnet.fit
   plot(
     fit, 
     xvar = "lambda",
@@ -1891,52 +1891,46 @@ The original 8 predictors were transformed into 200 fixed ReLU hidden features u
 
 
 ```{r relu-ridge}
-  ridge_relu_cv <- fit_cv_glmnet(
+  ridge_relu_cv <- analysis_model(
     H_train,
     y_train,
     alpha = 0,
     foldid = foldid
   )
   
-  ridge_relu_lambda_min <- ridge_relu_cv$lambda.min
-  ridge_relu_lambda_1se <- ridge_relu_cv$lambda.1se
-  
   ridge_relu_min <- glmnet(
     H_train,
     y_train,
     alpha = 0,
-    lambda = ridge_relu_lambda_min,
+    lambda = ridge_relu_cv$lambda_min,
     standardize = FALSE
   )
   ridge_relu_1se <- glmnet(
     H_train,
     y_train,
     alpha = 0,
-    lambda = ridge_relu_lambda_1se,
+    lambda = ridge_relu_cv$lambda.1se,
     standardize = FALSE
   )
 
 ```
 
-Ridge regression ($\alpha = 0$) was fitted on the 199 retained ReLU hidden features using the shared five-fold cross-validation folds, yielding `lambda.min` = `r round(ridge_relu_lambda_min, 4)` and `lambda.1se` = `r round(ridge_relu_lambda_1se, 4)`. Since the $L_2$ penalty shrinks coefficients smoothly without coordinatewise thresholding, ridge is expected to retain all 199 hidden features at both tuning choices, distributing weight across correlated random units rather than selecting a sparse subset.
+Ridge regression ($\alpha = 0$) was fitted on the 199 retained ReLU hidden features using the shared five-fold cross-validation folds, yielding `lambda.min` = `r round(ridge_relu_cv$lambda_min, 4)` and `lambda.1se` = `r round(ridge_relu_cv$lambda_1se, 4)`. Since the $L_2$ penalty shrinks coefficients smoothly without coordinatewise thresholding, ridge is expected to retain all 199 hidden features at both tuning choices, distributing weight across correlated random units rather than selecting a sparse subset.
 
 ```{r relu-lasso}
 
-lasso_relu_cv <- fit_cv_glmnet(
+lasso_relu_cv <- analysis_model(
   H_train,
   y_train,
   alpha = 1,
   foldid = foldid
 )
 
-lasso_relu_lambda_min <- lasso_relu_cv$lambda.min
-lasso_relu_lambda_1se <- lasso_relu_cv$lambda.1se
-
 lasso_relu_min <- glmnet(
   H_train,
   y_train,
   alpha = 1,
-  lambda = lasso_relu_lambda_min,
+  lambda = lasso_relu_cv$lambda_min,
   standardize = FALSE
 )
 
@@ -1945,13 +1939,13 @@ lasso_relu_1se <- glmnet(
   H_train,
   y_train,
   alpha = 1,
-  lambda= lasso_relu_lambda_1se,
+  lambda= lasso_relu_cv$lambda_1se,
   standardize = FALSE
 )
 
 ```
 
-Lasso regression ($\alpha = 1$) was fitted on the 199 retained ReLU hidden features using the same shared five-fold cross-validation folds. The minimum-CV-MSE lambda (`lambda.min` = `r round(lasso_relu_lambda_min, 4)`) and the one-standard-error lambda (`lambda.1se` = `r round(lasso_relu_lambda_1se, 4)`) were extracted and used to refit two final models on the full training set. Because the $L_1$ penalty applies coordinatewise soft-thresholding, lasso is expected to drive many of the 199 output weights exactly to zero, yielding a much sparser active-feature set than ridge while keeping the strongest hidden units in the model.
+Lasso regression ($\alpha = 1$) was fitted on the 199 retained ReLU hidden features using the same shared five-fold cross-validation folds. The minimum-CV-MSE lambda (`lambda.min` = `r round(lasso_relu_cv$lambda_min, 4)`) and the one-standard-error lambda (`lambda.1se` = `r round(lasso_relu_cv$lambda_1se, 4)`) were extracted and used to refit two final models on the full training set. Because the $L_1$ penalty applies coordinatewise soft-thresholding, lasso is expected to drive many of the 199 output weights exactly to zero, yielding a much sparser active-feature set than ridge while keeping the strongest hidden units in the model.
 
 ```{r relu-elastic-net}
 alphas <- c(0.10, 0.25, 0.50, 0.75, 0.90)
@@ -1960,14 +1954,14 @@ enet_relu_cv <- vector("list", length(alphas))
 enet_cv_error <- numeric(length(alphas))
 
 for(i in seq_along(alphas)){
-  enet_relu_cv[[i]] <- fit_cv_glmnet(
+  enet_relu_cv[[i]] <- analysis_model(
     H_train,
     y_train,
     alpha = alphas[i],
     foldid = foldid
   )
 
-  enet_cv_error[i] <- min(enet_relu_cv[[i]]$cvm)
+  enet_cv_error[i] <- min(enet_relu_cv[[i]]$model$cvm)
   
 }
 
@@ -1980,7 +1974,7 @@ for (i in seq_along(alphas)) {
     H_train,
     y_train,
     alpha = alphas[i],
-    lambda = enet_relu_cv[[i]]$lambda.min,
+    lambda = enet_relu_cv[[i]]$lambda_min,
     standardize = FALSE
   )
   
@@ -1988,7 +1982,7 @@ for (i in seq_along(alphas)) {
     H_train,
     y_train,
     alpha = alphas[i],
-    lambda = enet_relu_cv[[i]]$lambda.1se,
+    lambda = enet_relu_cv[[i]]$lambda_1se,
     standardize = FALSE
   )
 }
@@ -1996,7 +1990,7 @@ for (i in seq_along(alphas)) {
 
 enet_relu_full_summary <- purrr::map_dfr(seq_along(alphas), function(i) {
   a   <- alphas[i]
-  fit <- enet_relu_cv[[i]]
+  fit <- enet_relu_cv[[i]]$model
 
   tibble::tibble(
     alpha         = a,
@@ -2026,10 +2020,10 @@ The table summarizes the elastic net cross-validation results across the alpha g
 The number of active hidden features, however, declines clearly as alpha increases - from 45 features at alpha = 0.10 down to 14 at alpha = 0.90 under lambda.min, and even more sharply under lambda.1se (41 down to 6). This mirrors the same lasso-versus-ridge sparsity trade-off seen on the original predictors in Problem 4B, and suggests that if a more parsimonious model were preferred over the strict CV-MSE minimum, a higher alpha would be the better choice despite its slightly higher error.
 
 ```{r relu-num-actives}
-ridge_min_active <- count_nonzero(ridge_relu_cv, s = "lambda.min", tol = 1e-8)
-ridge_1se_active <- count_nonzero(ridge_relu_cv, s = "lambda.1se", tol = 1e-8)
-lasso_min_active <- count_nonzero(lasso_relu_cv, s = "lambda.min", tol = 1e-8)
-lasso_1se_active <- count_nonzero(lasso_relu_cv, s = "lambda.1se", tol = 1e-8)
+ridge_min_active <- count_nonzero(ridge_relu_cv$model, s = "lambda.min", tol = 1e-8)
+ridge_1se_active <- count_nonzero(ridge_relu_cv$model, s = "lambda.1se", tol = 1e-8)
+lasso_min_active <- count_nonzero(lasso_relu_cv$model, s = "lambda.min", tol = 1e-8)
+lasso_1se_active <- count_nonzero(lasso_relu_cv$model, s = "lambda.1se", tol = 1e-8)
 
 enet_min_active <- numeric(length(alphas))
 enet_1se_active <- numeric(length(alphas))
@@ -2051,14 +2045,14 @@ relu_summary <- data.frame(
   ),
   
   Lambda_min = c(
-    ridge_relu_lambda_min,
-    lasso_relu_lambda_min,
-    enet_relu_cv[[best_relu_enet_idx]]$lambda.min
+    ridge_relu_cv$lambda_min,
+    lasso_relu_cv$lambda_min,
+    enet_relu_cv[[best_relu_enet_idx]]$lambda_min
   ),
   
   CV_MSE_min = c(
-    min(ridge_relu_cv$cvm),
-    min(lasso_relu_cv$cvm),
+    min(ridge_relu_cv$model$cvm),
+    min(lasso_relu_cv$model$cvm),
     enet_cv_error[best_relu_enet_idx]
   ),
   
@@ -2069,9 +2063,9 @@ relu_summary <- data.frame(
   ),
   
   Lambda_1se = c(
-    ridge_relu_lambda_1se,
-    lasso_relu_lambda_1se,
-    enet_relu_cv[[best_relu_enet_idx]]$lambda.1se
+    ridge_relu_cv$lambda_1se,
+    lasso_relu_cv$lambda_1se,
+    enet_relu_cv[[best_relu_enet_idx]]$lambda_1se
   ),
   
   Active_Vars_1se = c(
@@ -2125,8 +2119,8 @@ models_summary <- data.frame(
     min(ridge$model$cvm),
     min(lasso_cv$model$cvm),
     best_orig_enet_cv_mse,
-    min(ridge_relu_cv$cvm),
-    min(lasso_relu_cv$cvm),
+    min(ridge_relu_cv$model$cvm),
+    min(lasso_relu_cv$model$cvm),
     enet_cv_error[best_relu_enet_idx]
   )
 )
@@ -2149,13 +2143,13 @@ pred_ols <- predict(ols_fit, newdata = data.frame(x_test))
 pred_ridge <- as.numeric(predict(ridge$model, newx = x_test, s = "lambda.min"))
 pred_lasso <- as.numeric(predict(lasso_cv$model, newx = x_test, s = "lambda.min"))
 
-best_orig_enet_model <- elastic_fits[[paste0("alpha_", best_orig_enet_alpha)]]
+best_orig_enet_model <- elastic_fits[[paste0("alpha_", best_orig_enet_alpha)]]$model
 pred_enet <- as.numeric(predict(best_orig_enet_model, newx = x_test, s = "lambda.min"))
 
-pred_relu_ridge <- as.numeric(predict(ridge_relu_cv, newx = H_test, s = "lambda.min"))
-pred_relu_lasso <- as.numeric(predict(lasso_relu_cv, newx = H_test, s = "lambda.min"))
+pred_relu_ridge <- as.numeric(predict(ridge_relu_cv$model, newx = H_test, s = "lambda.min"))
+pred_relu_lasso <- as.numeric(predict(lasso_relu_cv$model, newx = H_test, s = "lambda.min"))
 
-best_relu_enet_model <- enet_relu_cv[[best_relu_enet_idx]]
+best_relu_enet_model <- enet_relu_cv[[best_relu_enet_idx]]$model
 pred_relu_enet <- as.numeric(predict(best_relu_enet_model, newx = H_test, s = "lambda.min"))
 
 test_metrics <- data.frame(
