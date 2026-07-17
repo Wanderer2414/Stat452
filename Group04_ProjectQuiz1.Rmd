@@ -19,6 +19,8 @@ output:
     toc_depth: 3
 bibliography: references.bib
 link-citations: true
+nocite: |
+  @loshchilov2019decoupledweightdecayregularization, @krogh1992simple
 params:
   group_number: 04
 fontsize: 11pt
@@ -28,6 +30,7 @@ header-includes:
   - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,breakanywhere,commandchars=\\\{\}}
   - \DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines,breakanywhere}
   - \usepackage{float}
+  - \usepackage{longtable}
 ---
 
 <!--
@@ -42,13 +45,32 @@ final report.
 
 We confirm that every group member can explain the submitted analysis. AI use is reported in `Group04_AI_Log.csv`, and the group checked every AI-assisted item used in this report.
 
-| Student | ID | Main contributions | Verification performed |
-|---|---|---|---|
-| Nguyen Thi Yen Nhi | 24125071 | 1A (Data analysis), 2A(OLS), 4E (Question Explanation) |Verify AI texts|
-| Nguyen Khang Thinh | 24125104 | 1C (EDA), 2C (Lasso), 4B (Elastic Net), 4C (ReLU features), 4D (Holdout Eval) | Verified code & AI logs |
-| Nguyen Van Tinh | 24125106 | 1B(Data split), 3A(Ridge), 3B(Lasso), 3C(Algebra Evidence) | Verify mathematical problems |
-| Nguyen Le Quoc Huy | 24125100 | 2B(Ridge), 2D(Model comparison), 2E(Stabability Check), 4A(Paper research) | Verify the project workflow & code |
-
+```{=latex}
+\begingroup
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{p{0.25\linewidth} p{0.09\linewidth} p{0.33\linewidth} p{0.24\linewidth}}
+\hline
+Student & ID & Main contributions & Verification performed \\
+\hline
+Nguyen Thi Yen Nhi & 24125071 &
+1A (Data analysis), 2A (OLS), 4E (Question Explanation) &
+Verify AI texts \\
+\hline
+Nguyen Khang Thinh & 24125104 &
+1C (EDA), 2C (Lasso), 4B (Elastic Net), 4C (ReLU features), 4D (Holdout Eval) &
+Verified code \& AI logs \\
+\hline
+Nguyen Van Tinh & 24125106 &
+1B (Data split), 3A (Ridge), 3B (Lasso), 3C (Algebra Evidence) &
+Verify mathematical problems \\
+\hline
+Nguyen Le Quoc Huy & 24125100 &
+2B (Ridge), 2D (Model comparison), 2E (Stability Check), 4A (Paper research) &
+Verify the project workflow \& code \\
+\hline
+\end{tabular}
+\endgroup
+```
 # Abstract {-}
 
 This study aims to predict pre-operative log prostate-specific antigen (`lpsa`) from clinical measurements, comparing models on prediction error, coefficient stability, and interpretability under multicollinearity. We evaluated OLS, Ridge, Lasso, and Elastic Net regressions using five-fold cross-validation on original linear predictors and fixed random ReLU features. Cross-validation initially favored Lasso (CV-MSE = 0.5790) for its sparse selection of five variables. However, holdout evaluation revealed that the OLS model achieved the lowest test RMSE (0.6713) and MAE (0.5736). Furthermore, original linear features consistently outperformed the nonlinear ReLU representations across all models. Despite the OLS superiority in pure holdout accuracy, we recommend the lasso-dominant elastic net ($\alpha = 0.9$) for clinical deployment, as it provides a parsimonious, highly interpretable model that isolates key biological drivers of PSA with only a modest trade-off in error.
@@ -93,7 +115,7 @@ seeds <- list(
 
 ## Shared helper functions {-}
 
-```{r helpers, include=FALSE}
+```{r helpers}
 find_exam_data <- function(filename) {
   input <- knitr::current_input(dir = TRUE)
   input_dir <- if (length(input) && nzchar(input)) dirname(input) else getwd()
@@ -934,7 +956,7 @@ kable(
 )
 
 ```
-With $\lambda_{min} = $`r ridge$lambda_min`, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} = $`r ridge$mse_min``, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
+With $\lambda_{min} = `r ridge$lambda_min`$, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} = `r ridge$mse_min`$, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
 
 ### Lambda 1se:
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
@@ -955,7 +977,7 @@ kable(
 )
 
 ```
-Although the one-standard-error rule selected a larger penalty $\lambda_{1se} = $`r ridge$lambda_1se`, the condition number decreased strongly from `r ridge$cond_min` to `r ridge$cond_1se`. In contrast, the cross-validation MSE increased from `r ridge$mse_min` to `r ridge$mse_1se`. 
+Although the one-standard-error rule selected a larger penalty $\lambda_{1se} = `r ridge$lambda_1se`$, the condition number decreased strongly from `r ridge$cond_min` to `r ridge$cond_1se`. In contrast, the cross-validation MSE increased from `r ridge$mse_min` to `r ridge$mse_1se`. 
 
 ### Coefficients:
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
@@ -1359,6 +1381,7 @@ $$
 $$
 Because the same positive constant is added to every eigenvalue, the smallest eigenvalue is shifted away from zero, reducing the condition number. Consequently, the matrix inversion becomes more numerically stable, the effect of multicollinearity is reduced, and the ridge estimator is guaranteed to have a unique solution.
 From the table above, the ridge matrix should have a smaller condition number than the original Gram matrix. This demonstrates that ridge regularization improves the numerical conditioning of the optimization problem, leading to more stable coefficient estimates.
+
 ## 3B. Lasso optimality and soft thresholding
 Lasso regression estimates the regression coefficients by minimizing
 $$
@@ -1376,6 +1399,7 @@ $$
 $$
 and \(\lambda>0\) controls the amount of regularization.
 Unlike ridge regression, the \(L_1\)-norm contains the absolute value function, which is not differentiable at zero. Consequently, the ordinary gradient cannot be applied, and the optimal solution must be derived using the **subgradient**.
+
 ### Step 1. Rewrite the Objective Function
 Assume that the predictors have been centered, standardized, and satisfy the orthonormal design condition
 $$
@@ -1455,6 +1479,7 @@ z_jb_j
 C.
 $$
 Therefore, each coefficient can be optimized independently.
+
 ### Step 2. Compute the Subgradient
 Since
 $$
@@ -1479,6 +1504,7 @@ b_j-z_j
 \lambda\partial|b_j|.
 $$
 The solution is obtained by considering three cases.
+
 #### Case 1. Positive coefficient
 
 Suppose
@@ -1546,6 +1572,7 @@ $$
 b_j=0.
 $$
 This explains why lasso can produce exact zero coefficients.
+
 ### Step 3. Soft-Thresholding Solution
 
 Combining the three cases,
@@ -1642,15 +1669,50 @@ The results show that the condition number decreases from `r kappa_before` for t
 # Problem 4. Elastic net and a neural-feature bridge
 ## 4A. Research question and source map: $L_1$ penalties and sparse weights.
 
-**Source map:**
+*Source map:*
 
-| Claim | Source | Establishes | Not establish |
-|:-----------------------|:---------------------------|:---------------------------|:--------------------------|
-|L1 regularization promotes sparse neural-network weights by driving many parameters exactly to zero, resulting in more compact models.|**Sparse-Input Neural Networks for High-dimensional Nonparametric Regression and Classification**, @feng2019sparseinputneuralnetworkshighdimensional|Introduces a sparse group lasso penalty on the first-layer input weights, showing that irrelevant features converge toward zero while maintaining good predictive performance in high-dimensional problems.|L1 regularization always achieves the highest predictive accuracy or that it is optimal for every neural-network architecture. |
-|Sparsity-inducing regularization can remove redundant connections and neurons while preserving predictive performance.|**Transformed $L_1$ Regularization for Learning Sparse Deep Neural Networks**, @ma2019transformedell1regularizationlearning|Proposes a transformed $L_1$ regularizer combined with group sparsity to simultaneously eliminate redundant connections and unnecessary neurons, producing compact networks with competitive performance.|Transformed $L_1$ regularization is universally superior to all other sparsity methods or that every sparse network will generalize better than a dense one.|
-|Sparse weight regularization introduces an implicit trade-off between predictive accuracy and model complexity, where increased sparsity can improve computational efficiency but may reduce predictive performance if important parameters are excessively penalized.|**Transformed $L_1$ Regularization for Learning Sparse Deep Neural Networks**, @ma2019transformedell1regularizationlearning|Figure 4 establishes that increasing sparsity reduces the number of retained parameters and computational cost (FLOPs), but this reduction is accompanied by a trade-off in predictive performance, with accuracy generally improving as more parameters are retained.|Sparse weight regularization is universally superior to other regularization methods or that a single level of sparsity provides the optimal balance between predictive performance and model complexity across all neural-network architectures, datasets, and learning tasks.|
-|Under Adam, the adaptive learning rate causes the gradient contribution from an L2 penalty to be rescaled for each parameter, whereas decoupled weight decay uniformly shrinks the parameters independently of the adaptive gradient update.| **Decoupled Weight Decay Regularization**, @loshchilov2019decoupledweightdecayregularization| Derives the update equations for Adam with L2 regularization and AdamW, proving that the two optimization procedures are mathematically different because adaptive gradient scaling affects the L2 penalty but not decoupled weight decay. | Decoupled weight decay is universally superior across all optimizers, neural-network architectures, datasets, or learning tasks. |
-|Weight decay biases neural networks toward smoother input–output mappings by penalizing large weights, reducing effective model complexity and improving generalization.| **A Simple Weight Decay Can Improve Generalization**, @krogh1992simple| Derive how an L2 weight-decay penalty discourages large weights, resulting in smoother mappings with lower effective complexity, and experimentally shows improved generalization on the evaluated neural-network tasks. | A single weight-decay coefficient is optimal for all network architectures, datasets, or optimization methods.|
+{=latex}
+\begingroup
+\renewcommand{\arraystretch}{1.3}
+\begin{longtable}{p{0.26\linewidth} p{0.17\linewidth} p{0.26\linewidth} p{0.19\linewidth}}
+\hline
+Claim & Source & Establishes & Not establish \\
+\hline
+\endfirsthead
+\hline
+Claim & Source & Establishes & Not establish \\
+\hline
+\endhead
+\hline
+\endfoot
+L1 regularization promotes sparse neural-network weights by driving many parameters exactly to zero, resulting in more compact models. &
+\textbf{Sparse-Input Neural Networks for High-dimensional Nonparametric Regression and Classification}, Feng and Simon (2019) &
+Introduces a sparse group lasso penalty on the first-layer input weights, showing that irrelevant features converge toward zero while maintaining good predictive performance in high-dimensional problems. &
+L1 regularization always achieves the highest predictive accuracy or that it is optimal for every neural-network architecture. \\
+\hline
+Sparsity-inducing regularization can remove redundant connections and neurons while preserving predictive performance. &
+\textbf{Transformed $L_1$ Regularization for Learning Sparse Deep Neural Networks}, Ma et al. (2019) &
+Proposes a transformed $L_1$ regularizer combined with group sparsity to simultaneously eliminate redundant connections and unnecessary neurons, producing compact networks with competitive performance. &
+Transformed $L_1$ regularization is universally superior to all other sparsity methods or that every sparse network will generalize better than a dense one. \\
+\hline
+Sparse weight regularization introduces an implicit trade-off between predictive accuracy and model complexity, where increased sparsity can improve computational efficiency but may reduce predictive performance if important parameters are excessively penalized. &
+\textbf{Transformed $L_1$ Regularization for Learning Sparse Deep Neural Networks}, Ma et al. (2019) &
+Figure 4 establishes that increasing sparsity reduces the number of retained parameters and computational cost (FLOPs), but this reduction is accompanied by a trade-off in predictive performance, with accuracy generally improving as more parameters are retained. &
+Sparse weight regularization is universally superior to other regularization methods or that a single level of sparsity provides the optimal balance between predictive performance and model complexity across all neural-network architectures, datasets, and learning tasks. \\
+\hline
+Under Adam, the adaptive learning rate causes the gradient contribution from an L2 penalty to be rescaled for each parameter, whereas decoupled weight decay uniformly shrinks the parameters independently of the adaptive gradient update. &
+\textbf{Decoupled Weight Decay Regularization}, Loshchilov and Hutter (2019) &
+Derives the update equations for Adam with L2 regularization and AdamW, proving that the two optimization procedures are mathematically different because adaptive gradient scaling affects the L2 penalty but not decoupled weight decay. &
+Decoupled weight decay is universally superior across all optimizers, neural-network architectures, datasets, or learning tasks. \\
+\hline
+Weight decay biases neural networks toward smoother input--output mappings by penalizing large weights, reducing effective model complexity and improving generalization. &
+\textbf{A Simple Weight Decay Can Improve Generalization}, Krogh and Hertz (1992) &
+Derive how an L2 weight-decay penalty discourages large weights, resulting in smoother mappings with lower effective complexity, and experimentally shows improved generalization on the evaluated neural-network tasks. &
+A single weight-decay coefficient is optimal for all network architectures, datasets, or optimization methods. \\
+\hline
+\end{longtable}
+\endgroup
+
 ## 4B. Elastic net on original predictors
 
 ### Elastic net fitting across alpha
@@ -2128,7 +2190,13 @@ The model in Section 4C is effectively a neural network frozen halfway through: 
 
 **4. One frozen hidden layer says nothing about a fully trained deep network.** 4C differs from an actual deep network in two separate ways. The first is depth: 4C has exactly one nonlinear transformation, $x \to \mathrm{ReLU}(Ax+c) \to \hat y$, while a deep network stacks several such transformations, each layer consuming the *learned* output of the one before it rather than a fixed random projection, so the composition can represent a far richer family of functions than any single fixed layer can. Concretely, a trained hidden layer could orient its ReLU boundaries toward whatever combinations of `lcavol`, `lcp`, and the other predictors actually separate high and low `lpsa`; the rows of our `A` instead point in directions drawn uniformly at random, with no relationship to `lpsa` at all, so most of them carry no more signal than noise. Stacking additional *trained* layers on top would let a real network re-combine those directions again and again, building increasingly task-specific features - something a single fixed layer cannot do regardless of how many hidden units it has. The second gap has nothing to do with depth: even that one layer is not learned here. $A$ and $c$ stay fixed at their randomly drawn values, and only $\beta$ is fit, so the problem reduces to a linear model in the read-out weights. What matters is which parameters ever receive a gradient. In a trained network, the loss gradient flows backward through the hidden layer via backpropagation, telling every row of `A` how to rotate so that the resulting features better separate the signal in the data; in 4C, that gradient with respect to `A` is never computed or applied, so no such adaptation happens. It is worth noting that even training `A` on its own would only produce a *trained shallow* network, not a deep one - depth specifically requires composing several learned nonlinear transformations, and one adaptable layer is still just one layer. Because of both gaps, every result in 4C - including the fact that the nonlinear expansion barely moved the cross-validation error - is a statement about *one fixed, randomly oriented layer*. It says nothing about what a multi-layer network with a trained hidden representation could achieve on the same data; that would simply be a different experiment from the one run here.
 
-**Limitations.** *(i) Sensitivity to the random-feature seed.* The `r ncol(H_train)` hidden features depend entirely on the single seed `r seeds$features`. `A` and `c` are only one draw among countless possible random weight sets, and nothing in this design lets us check whether this particular draw was more or less fortunate than another one would have been; the active-feature counts and CV-MSE in 4C could shift under a different seed. Fixing one seed is necessary for reproducibility, but it also means we cannot report how much these results would vary across draws. *(ii) A single, untrained random map confounds two explanations.* Elastic net on the `r ncol(x_train)` original predictors reached a lower cross-validation MSE (Table 4B) than any model on the `r ncol(H_train)` ReLU features (Table 4C). Because `A` was drawn once and never adapted to `lpsa`, the experiment cannot separate two accounts of that gap: a nonlinear expansion is genuinely not useful for these predictors, or this *one* random, un-adapted expansion simply happened not to align with the signal. A trained hidden layer, or repeated draws of the random-feature bank, could in principle distinguish the two; this design cannot. *(iii) Small holdout.* With `r length(train_id)` training and only `r length(test_id)` test patients, the 4D holdout metrics carry wide uncertainty; the final ranking can be confirmed only weakly, and gaps smaller than the cross-validation standard error should not be over-interpreted.
+**Limitations.** 
+
+*(i) Sensitivity to the random-feature seed.* The `r ncol(H_train)` hidden features depend entirely on the single seed `r seeds$features`. `A` and `c` are only one draw among countless possible random weight sets, and nothing in this design lets us check whether this particular draw was more or less fortunate than another one would have been; the active-feature counts and CV-MSE in 4C could shift under a different seed. Fixing one seed is necessary for reproducibility, but it also means we cannot report how much these results would vary across draws. 
+
+*(ii) A single, untrained random map confounds two explanations.* Elastic net on the `r ncol(x_train)` original predictors reached a lower cross-validation MSE (Table 4B) than any model on the `r ncol(H_train)` ReLU features (Table 4C). Because `A` was drawn once and never adapted to `lpsa`, the experiment cannot separate two accounts of that gap: a nonlinear expansion is genuinely not useful for these predictors, or this *one* random, un-adapted expansion simply happened not to align with the signal. A trained hidden layer, or repeated draws of the random-feature bank, could in principle distinguish the two; this design cannot.
+
+*(iii) Small holdout.* With `r length(train_id)` training and only `r length(test_id)` test patients, the 4D holdout metrics carry wide uncertainty; the final ranking can be confirmed only weakly, and gaps smaller than the cross-validation standard error should not be over-interpreted.
 
 # Problem 5. Report quality and reproducibility
 
