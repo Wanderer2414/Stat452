@@ -15,3 +15,25 @@ data.frame(
   Matrix = c("Gram matrix (G)", "Ridge matrix (G + λI)"),
   Condition_Number = c(kappa_before, kappa_after)
 )
+
+
+## 3A. Ridge and conditioning
+
+*Write the ridge derivation. Define dimensions and explain uniqueness.*
+
+```{r ridge-conditioning}
+# Use x_train and the fitted ridge lambda.min.
+# safe_condition_numbers(x_train, lambda = ...)
+```
+
+
+
+
+
+## 3B. Lasso optimality and soft thresholding
+
+*Derive the zero/nonzero optimality conditions and the orthonormal-design formula.*
+
+## 3C. Connect algebra to evidence
+
+*Connect one specific numerical result to Problem 3A or 3B.*
