@@ -363,7 +363,7 @@ kable(
 n_duplicate_rows <- sum(duplicated(analysis_data))
 ```
 
-**Reading the table.** The file holds `r nrow(data_raw)` patients and
+The file holds `r nrow(data_raw)` patients and
 `r ncol(data_raw)` columns. Three integrity results clear the way for the split.
 Every column is numeric, so the type guard above passes and the design matrix
 needs no factor encoding. No cell is missing (`Missing` is zero throughout), so
@@ -420,8 +420,12 @@ To ensure a fair comparison among OLS, ridge, lasso, and elastic net, all prepro
 The observations were randomly partitioned into training and test sets using the custom `split_rows()` function with a training proportion of 80%. For Group 4, the split seed was **240204**, ensuring that the same partition can be reproduced in future analyses.
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
-cat("Training observations:", length(train_id), "\n")
-cat("Test observations:", length(test_id), "\n")
+kable(
+  data.frame(
+    Observation = c("Training", "Test observations"),
+    Value = c(length(train_id), length(test_id))
+  )
+)
 ```
 
 The training data were used for exploratory analysis, preprocessing, model fitting, and cross-validation, while the holdout test data remained untouched until the final evaluation.
@@ -441,7 +445,7 @@ Model tuning was carried out using five-fold cross-validation on the training da
 The dataset was checked for missing values before model fitting.
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
-cat("Total missing values:", sum(is.na(analysis_data)), "\n")
+kable(data.frame(Total_missing_values = sum(is.na(analysis_data))))
 ```
 
 No missing values were detected; therefore, no imputation was required. If missing values had been present, imputation statistics would have been estimated using only the training data and then applied unchanged to the test data.
@@ -503,7 +507,14 @@ The pairwise correlation matrix was examined to identify potential relationships
 ```{r eda-response-dist, echo=FALSE, warning=FALSE, message=FALSE}
 
 hist(y_train)
-summary(y_train)
+summary <- as.matrix(summary(y_train))
+
+kable(
+  data.frame(
+    Row = rownames(summary),
+    Value = as.numeric(summary[,1])
+  )
+)
 ```
 The distribution of the response variable (lpsa) was examined using a histogram and summary statistics. The response values range from -0.43 to 5.58, with a median of 2.57 and a mean of 2.48. The mean and median are relatively close, indicating that the distribution is approximately symmetric with no strong skewness. Although some observations appear at the lower and higher ends of the range, no severe outliers are evident from the overall distribution. Therefore, no transformation was applied to the response variable before model training.
 
@@ -1156,7 +1167,7 @@ In contrast, lasso regression was expected to maintain similar prediction accura
 ```{r perturbation}
 x_train_new = data.frame(x_train)
 x_train_new$lcavol_new <- x_train_new$lcavol + rnorm(nrow(x_train), 0, 0.1)
-cor(x=x_train_new$lcavol, y = x_train_new$lcavol_new)
+kable(cor(x=x_train_new$lcavol, y = x_train_new$lcavol_new))
 
 ridge_new <- analysis_model(as.matrix(x_train_new), y_train, foldid=foldid, alpha = 0)
 lasso_new <- analysis_model(as.matrix(x_train_new), y_train, foldid=foldid, alpha = 1)
@@ -1505,9 +1516,10 @@ b_j-z_j
 $$
 The solution is obtained by considering three cases.
 
-#### Case 1. Positive coefficient
+\textbf{Case 1. Positive coefficient}
 
 Suppose
+
 $$
 b_j>0.
 $$
@@ -1528,7 +1540,7 @@ $$
 z_j>\lambda.
 $$
 
-#### Case 2. Negative coefficient
+\textbf{Case 2. Negative coefficient}
 
 Suppose
 $$
@@ -1551,7 +1563,7 @@ $$
 z_j<-\lambda.
 $$
 
-#### Case 3. Zero coefficient
+\textbf{Case 3. Zero coefficient}
 
 Suppose
 $$
