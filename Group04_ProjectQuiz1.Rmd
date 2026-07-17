@@ -627,7 +627,7 @@ threshold <- 4 / n_train
 plot(cooks_d,
      type = "h", lwd = 1.5, col = "steelblue",
      ylab = "Cook's distance", xlab = "Observation index",
-     main = "Cook's Distance — OLS Baseline")
+     main = "Cook's Distance - OLS Baseline")
 abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
 text_idx <- which(cooks_d > threshold)
 if (length(text_idx)) {
@@ -841,7 +841,7 @@ lambda_1se <- lasso_cv$lambda.1se
 coef(lasso_cv, s="lambda.1se")
 count_nonzero(lasso_cv, s="lambda.1se")
 ```
-The one-standard-error rule selects $\lambda_{\text{1se}} = r round(lambda_1se, 4)$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
+The one-standard-error rule selects $\lambda_{\text{1se}} = `r round(lambda_1se, 4)`$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is r round(cv_mse_1se, 4), remaining within one standard error of the minimum while producing a simpler model.
 
 Under $\lambda_{\text{1se}}$, the Lasso model retains only three non-zero predictors (lcavol, lweight, and svi). Compared with $\lambda_{\text{min}}$, the variables lbph and pgg45 are removed, resulting in a more parsimonious and interpretable model with only a small loss in predictive performance.
 
@@ -1636,27 +1636,9 @@ Despite the structural differences dictated by $\alpha$, the hierarchy of predic
 
 ## 4C. Fixed ReLU features
 
-```{r random-relu-features}
-relu <- function(z) pmax(z, 0)
-M <- 200L
-
-# TODO:
-# 1. Generate A and bias once from seeds$features using the stated distributions.
-# 2. Apply the same A and bias to x_train and x_test.
-# 3. Fit a scaler to H_train only and apply it to H_test.
-# 4. Fit ridge, lasso, and elastic net on H_train with the shared foldid.
-```
-
-*State which weights are fixed, which are learned, and how active features are counted.*
-
-## 4C. Fixed ReLU Features
-
 To investigate whether a fixed nonlinear feature representation improves predictive performance, the standardized predictors were transformed into a set of random ReLU features. Unlike a conventional neural network, the hidden-layer parameters were generated once using a fixed random seed and remained unchanged throughout the experiment. Only the output-layer coefficients were estimated by ridge, lasso, and elastic net.
 
-```{r}
-## ------------------------------------------------------------
-## Fixed random ReLU features
-## ------------------------------------------------------------
+```{r r-relu-setup}
 
 M <- 200L
 
@@ -1679,11 +1661,10 @@ c_bias <- rnorm(
 )
 
 relu <- function(z) pmax(z, 0)
+```
 
-## ------------------------------------------------------------
-## Construct hidden features
-## ------------------------------------------------------------
 
+```{r relu-construct}
 H_train <- relu(
   x_train %*% t(A) +
     matrix(
@@ -1704,158 +1685,232 @@ H_test <- relu(
     )
 )
 
-## ------------------------------------------------------------
-## Remove constant hidden features
-## ------------------------------------------------------------
-
 keep <- apply(H_train, 2, stats::var) > 0
 
 H_train <- H_train[, keep, drop = FALSE]
 H_test  <- H_test[, keep, drop = FALSE]
 
+prep_relu <- fit_scaler(H_train)
+
+H_train <- apply_scaler(H_train, prep_relu)
+
+H_test <- apply_scaler(H_test, prep_relu)
+
 cat("Original hidden features :", M, "\n")
 cat("Remaining hidden features:", ncol(H_train), "\n")
+```
 
-## ------------------------------------------------------------
-## Ridge
-## ------------------------------------------------------------
+The original 8 predictors were transformed into 200 fixed ReLU hidden features using randomly generated hidden-layer weights and biases. Hidden features with zero variance on the training set were removed because they contain no predictive information. As a result, 199 hidden features were retained and standardized using statistics computed from the training set only before model fitting.
 
-cv_ridge_relu <- cv.glmnet(
-  H_train,
-  y_train,
-  alpha = 0,
-  foldid = foldid,
-  standardize = FALSE
-)
 
-ridge_lambda <- cv_ridge_relu$lambda.min
+  ```{r relu-ridge}
+  ridge_relu_cv <- fit_cv_glmnet(
+    H_train,
+    y_train,
+    alpha = 0,
+    foldid = foldid
+  )
+  
+  ridge_relu_lambda_min <- ridge_relu_cv$lambda.min
+  ridge_relu_lambda_1se <- ridge_relu_cv$lambda.1se
+  
+  ridge_relu_min <- glmnet(
+    H_train,
+    y_train,
+    alpha = 0,
+    lambda = ridge_relu_lambda_min,
+    standardize = FALSE
+  )
+  ridge_relu_1se <- glmnet(
+    H_train,
+    y_train,
+    alpha = 0,
+    lambda = ridge_relu_lambda_1se,
+    standardize = FALSE
+  )
+  
+  ```
 
-ridge_relu <- glmnet(
-  H_train,
-  y_train,
-  alpha = 0,
-  lambda = ridge_lambda,
-  standardize = FALSE
-)
+Ridge regression ($\alpha = 0$) was fitted on the 199 retained ReLU hidden features using the shared five-fold cross-validation folds, yielding `lambda.min` = `r round(ridge_relu_lambda_min, 4)` and `lambda.1se` = `r round(ridge_relu_lambda_1se, 4)`. Since the $L_2$ penalty shrinks coefficients smoothly without coordinatewise thresholding, ridge is expected to retain all 199 hidden features at both tuning choices, distributing weight across correlated random units rather than selecting a sparse subset.
 
-## ------------------------------------------------------------
-## Lasso
-## ------------------------------------------------------------
+```{r relu-lasso}
 
-cv_lasso_relu <- cv.glmnet(
+lasso_relu_cv <- fit_cv_glmnet(
   H_train,
   y_train,
   alpha = 1,
-  foldid = foldid,
-  standardize = FALSE
+  foldid = foldid
 )
 
-lasso_lambda <- cv_lasso_relu$lambda.min
+lasso_relu_lambda_min <- lasso_relu_cv$lambda.min
+lasso_relu_lambda_1se <- lasso_relu_cv$lambda.1se
 
-lasso_relu <- glmnet(
+lasso_relu_min <- glmnet(
   H_train,
   y_train,
   alpha = 1,
-  lambda = lasso_lambda,
+  lambda = lasso_relu_lambda_min,
   standardize = FALSE
 )
 
-## ------------------------------------------------------------
-## Elastic Net
-## ------------------------------------------------------------
 
+lasso_relu_1se <- glmnet(
+  H_train,
+  y_train,
+  alpha = 1,
+  lambda= lasso_relu_lambda_1se,
+  standardize = FALSE
+)
+
+```
+
+Lasso regression ($\alpha = 1$) was fitted on the 199 retained ReLU hidden features using the same shared five-fold cross-validation folds. The minimum-CV-MSE lambda (`lambda.min` = `r round(lasso_relu_lambda_min, 4)`) and the one-standard-error lambda (`lambda.1se` = `r round(lasso_relu_lambda_1se, 4)`) were extracted and used to refit two final models on the full training set. Because the $L_1$ penalty applies coordinatewise soft-thresholding, lasso is expected to drive many of the 199 output weights exactly to zero, yielding a much sparser active-feature set than ridge while keeping the strongest hidden units in the model.
+
+```{r relu-elastic-net}
 alphas <- c(0.10, 0.25, 0.50, 0.75, 0.90)
 
-enet_cv <- vector("list", length(alphas))
-cv_error <- numeric(length(alphas))
+enet_relu_cv <- vector("list", length(alphas))
+enet_cv_error <- numeric(length(alphas))
 
 for(i in seq_along(alphas)){
-
-  enet_cv[[i]] <- cv.glmnet(
+  enet_relu_cv[[i]] <- fit_cv_glmnet(
     H_train,
     y_train,
     alpha = alphas[i],
-    foldid = foldid,
-    standardize = FALSE
+    foldid = foldid
   )
 
-  cv_error[i] <- min(enet_cv[[i]]$cvm)
-
+  enet_cv_error[i] <- min(enet_relu_cv[[i]]$cvm)
+  
 }
 
-best <- which.min(cv_error)
+# best <- which.min(enet_cv_error)
+# best_alpha <- alphas[best]
 
-best_alpha <- alphas[best]
+# best_lambda <- enet_relu_cv[[best]]$lambda.min
 
-best_lambda <- enet_cv[[best]]$lambda.min
+enet_relu_min <- vector("list", length(alphas))
+enet_relu_1se <- vector("list", length(alphas))
 
-enet_relu <- glmnet(
-  H_train,
-  y_train,
-  alpha = best_alpha,
-  lambda = best_lambda,
-  standardize = FALSE
+for (i in seq_along(alphas)) {
+
+  enet_relu_min[[i]] <- glmnet(
+    H_train,
+    y_train,
+    alpha = alphas[i],
+    lambda = enet_relu_cv[[i]]$lambda.min,
+    standardize = FALSE
+  )
+  
+  enet_relu_1se[[i]] <- glmnet(
+    H_train,
+    y_train,
+    alpha = alphas[i],
+    lambda = enet_relu_cv[[i]]$lambda.1se,
+    standardize = FALSE
+  )
+}
+
+
+enet_relu_full_summary <- purrr::map_dfr(seq_along(alphas), function(i) {
+  a   <- alphas[i]
+  fit <- enet_relu_cv[[i]]
+
+  tibble::tibble(
+    alpha         = a,
+    lambda_min    = fit$lambda.min,
+    lambda_1se    = fit$lambda.1se,
+    cv_mse_min    = min(fit$cvm),
+    cv_mse_1se    = fit$cvm[fit$lambda == fit$lambda.1se],
+    active_min    = count_nonzero(fit, s = "lambda.min", tol = 1e-8),
+    active_1se    = count_nonzero(fit, s = "lambda.1se", tol = 1e-8)
+  )
+})
+
+knitr::kable(
+  enet_relu_full_summary,
+  digits    = 4,
+  col.names = c("Alpha", "Lambda (min)", "Lambda (1se)",
+                "CV-MSE (min)", "CV-MSE (1se)",
+                "Active Features (min)", "Active Features (1se)"),
+  caption   = "Table: Elastic net cross-validation summary across alpha on fixed ReLU features."
 )
+```
 
-## ------------------------------------------------------------
-## Number of active hidden features
-## ------------------------------------------------------------
+Elastic Net models were trained over a grid of $\alpha \in \{0.1, 0.25, 0.5, 0.75, 0.9\}$. For each $\alpha$, the optimal $\lambda$ was determined using the shared 5-fold cross-validation, and the model with the lowest cross-validation error was selected as the final Elastic Net model.
 
-ridge_active <-
-  sum(as.vector(coef(ridge_relu))[-1] != 0)
+The table summarizes the elastic net cross-validation results across the alpha grid on the fixed ReLU feature representation. The minimum CV-MSE stays close to $0.61$–$0.63$ across all five values of alpha, with alpha = 0.10 achieving the lowest CV-MSE (0.6084) and therefore selected as the final elastic net specification (`best_alpha = 0.10`). Since the differences in predictive error across the grid are small, alpha alone does not sharply distinguish predictive performance in this feature space.
 
-lasso_active <-
-  sum(as.vector(coef(lasso_relu))[-1] != 0)
+The number of active hidden features, however, declines clearly as alpha increases - from 45 features at alpha = 0.10 down to 14 at alpha = 0.90 under lambda.min, and even more sharply under lambda.1se (41 down to 6). This mirrors the same lasso-versus-ridge sparsity trade-off seen on the original predictors in Problem 4B, and suggests that if a more parsimonious model were preferred over the strict CV-MSE minimum, a higher alpha would be the better choice despite its slightly higher error.
 
-enet_active <-
-  sum(as.vector(coef(enet_relu))[-1] != 0)
+```{r relu-num-actives}
+ridge_min_active <- count_nonzero(ridge_relu_cv, s = "lambda.min", tol = 1e-8)
+ridge_1se_active <- count_nonzero(ridge_relu_cv, s = "lambda.1se", tol = 1e-8)
+lasso_min_active <- count_nonzero(lasso_relu_cv, s = "lambda.min", tol = 1e-8)
+lasso_1se_active <- count_nonzero(lasso_relu_cv, s = "lambda.1se", tol = 1e-8)
 
-## ------------------------------------------------------------
-## Summary table
-## ------------------------------------------------------------
+enet_min_active <- numeric(length(alphas))
+enet_1se_active <- numeric(length(alphas))
+for (i in seq_along(alphas)){
+  enet_min_active[i] <- sum(as.vector(coef(enet_relu_min[[i]]))[-1] != 0)
+  enet_1se_active[i] <- sum(as.vector(coef(enet_relu_1se[[i]]))[-1] != 0)
+}
+```
+
+```{r relu-sum}
+best_idx <- which.min(enet_cv_error)
+best_alpha <- alphas[best_idx]
 
 relu_summary <- data.frame(
-
   Model = c(
     "Ridge",
     "Lasso",
-    "Elastic Net"
+    paste0("Elastic Net (alpha = ", best_alpha, ")")
   ),
-
-  Lambda = c(
-    ridge_lambda,
-    lasso_lambda,
-    best_lambda
+  
+  Lambda_min = c(
+    ridge_relu_lambda_min,
+    lasso_relu_lambda_min,
+    enet_relu_cv[[best_idx]]$lambda.min
   ),
-
-  CV_Error = c(
-    min(cv_ridge_relu$cvm),
-    min(cv_lasso_relu$cvm),
-    min(cv_error)
+  
+  CV_MSE_min = c(
+    min(ridge_relu_cv$cvm),
+    min(lasso_relu_cv$cvm),
+    enet_cv_error[best_idx]
   ),
-
-  Active_Hidden_Features = c(
-    ridge_active,
-    lasso_active,
-    enet_active
+  
+  Active_Vars_min = c(
+    ridge_min_active,
+    lasso_min_active,
+    enet_min_active[best_idx]
+  ),
+  
+  Lambda_1se = c(
+    ridge_relu_lambda_1se,
+    lasso_relu_lambda_1se,
+    enet_relu_cv[[best_idx]]$lambda.1se
+  ),
+  
+  Active_Vars_1se = c(
+    ridge_1se_active,
+    lasso_1se_active,
+    enet_1se_active[best_idx]
   )
-
 )
 
 knitr::kable(
   relu_summary,
   digits = 4,
-  caption = "Performance of regularized models using fixed ReLU features."
+  col.names = c("Model", "Lambda (min)", "MSE (min)", "Active Features (min)", "Lambda (1se)", "Active Features (1se)"),
+  caption = "Table: Performance of Regularized Models using fixed ReLU features."
 )
-
 
 ```
 
-The hidden-layer parameters were generated only once using the declared random-feature seed (**240404**) and remained fixed throughout the experiment. Therefore, the random weight vectors \(a_m\) and biases \(c_m\) were **not learned**. Instead, ridge, lasso, and elastic net estimated only the output-layer coefficients associated with the generated hidden features.
+Table 4C summarizes ridge, lasso, and elastic net (alpha = `r best_alpha`, selected from Table 4B.2) fitted on the 199 retained ReLU hidden features. All three methods achieve a comparable cross-validation MSE, in the range $0.6084$–$0.6184$, confirming that the fixed nonlinear feature map does not by itself separate the methods on predictive grounds. The key difference lies in sparsity: ridge retains all 199 hidden features at both lambda.min and lambda.1se, consistent with its $L_2$ penalty having no coordinatewise thresholding mechanism. Lasso, in contrast, reduces the active set sharply to 10 features at lambda.min and just 6 at lambda.1se, while elastic net falls in between at 45 and 41 active features, reflecting its mixed $L_1$/$L_2$ penalty at alpha = `r best_alpha`.
 
-Constant hidden features were identified using **only the training data** and removed before model fitting. The same subset of retained hidden features was then applied to the test data, preventing information leakage from the holdout set.
-
-Table X reports the selected tuning parameters, the minimum five-fold cross-validation error, and the number of active hidden features. Ridge generally retains almost all hidden features because the \(L_2\) penalty continuously shrinks coefficients without producing exact zeros. Lasso produces a sparse solution by setting many output weights exactly to zero, while elastic net exhibits behaviour between ridge and lasso by balancing shrinkage and sparsity.
+Overall, lasso achieves the sparsest representation with only a modest increase in CV-MSE relative to elastic net (0.6184 vs. 0.6084), while ridge attains a similar error (0.6128) using the full hidden-feature set. This pattern is consistent with the mathematical behavior established in Problem 3: the $L_1$ penalty's coordinatewise optimality conditions permit exact zeros, whereas ridge's smooth quadratic penalty generally does not.
 
 ## 4D. Locked declaration and final holdout evaluation
 
