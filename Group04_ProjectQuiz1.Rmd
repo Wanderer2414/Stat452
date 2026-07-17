@@ -484,6 +484,7 @@ The distribution of the response variable (lpsa) was examined using a histogram 
 ### Predictor Histogram  & Boxplot
 
 1. Histogram
+
 ```{r eda-hist, echo=FALSE, warning=FALSE, message=FALSE}
 ## Histogram
 par(mfrow = c(2,4))
@@ -500,7 +501,13 @@ for (var in predictors) {
 par(mfrow = c(1,1))
 ```
 
+The histograms show that most predictors have different distribution patterns. lcavol, lweight, and age are approximately symmetric, while lbph, lcp, and pgg45 exhibit right-skewed distributions with longer tails toward higher values. svi and gleason are discrete variables with highly concentrated values. These distribution characteristics are considered in later regression analysis and model diagnostics.
+
+Upon inspecting the visualizations, a potential influential observation is evident in the lweight vs lpsa plot. There is a single data point located at the far right with an exceptionally high lweight (exceeding 6.0) but a relatively low lpsa (approximately 2.0).
+
+
 2. Boxplot
+
 ```{r eda-boxplot, echo=FALSE, warning=FALSE, message=FALSE}
 ## Boxplot
 par(mfrow = c(2,4))
@@ -515,9 +522,9 @@ par(mfrow = c(1,1))
 
 ```
 
-The histograms show that most predictors have different distribution patterns. lcavol, lweight, and age are approximately symmetric, while lbph, lcp, and pgg45 exhibit right-skewed distributions with longer tails toward higher values. svi and gleason are discrete variables with highly concentrated values. These distribution characteristics are considered in later regression analysis and model diagnostics.
+The boxplots complement the histogram findings by explicitly highlighting the data spread and identifying potential outliers. The plots for `lcavol` and `age` confirm their overall symmetry, although `age` reveals a few lower-bound outliers (patients younger than 50). The right-skewed characteristics of `lbph`, `lcp`, and `pgg45` are clearly visible through their asymmetrical boxes, where the medians sit much closer to the first quartiles, accompanied by elongated upper whiskers. 
 
-Upon inspecting the visualizations, a potential influential observation is evident in the lweight vs lpsa plot. There is a single data point located at the far right with an exceptionally high lweight (exceeding 6.0) but a relatively low lpsa (approximately 2.0).
+For the discrete variables, `svi` and `gleason`, the box structures are naturally collapsed due to their limited distinct values, with `gleason` displaying an isolated upper outlier at a score of 9. Most importantly, the `lweight` boxplot corroborates the presence of the influential observation noted previously. While the interquartile range for prostate weight is tightly clustered, a prominent upper outlier exceeding 6.0 is explicitly flagged, confirming that this extreme anomaly exists inherently within the univariate distribution.
 
 ### Correlation between predictors and response
 
@@ -1775,6 +1782,7 @@ As the mixing parameter $\alpha$ increases from 0.10 (Ridge-dominant) to 0.90 (L
 Therefore, the final model selected for subsequent evaluation on the unseen test set is the Elastic Net configured with $\alpha = 0.90$ and evaluated at $\lambda = 0.0902$.
 
 ### Coefficient path across alpha
+
 ```{r elastic-coef-path, echo=FALSE, warning=FALSE, message=FALSE}
 ## coefficient path
 
