@@ -1784,11 +1784,6 @@ for(i in seq_along(alphas)){
   
 }
 
-# best <- which.min(enet_cv_error)
-# best_alpha <- alphas[best]
-
-# best_lambda <- enet_relu_cv[[best]]$lambda.min
-
 enet_relu_min <- vector("list", length(alphas))
 enet_relu_1se <- vector("list", length(alphas))
 
@@ -1858,70 +1853,162 @@ for (i in seq_along(alphas)){
 ```
 
 ```{r relu-sum}
-best_idx <- which.min(enet_cv_error)
-best_alpha <- alphas[best_idx]
+best_relu_enet_idx <- which.min(enet_cv_error)
+best_relu_enet_alpha <- alphas[best_relu_enet_idx]
 
 relu_summary <- data.frame(
   Model = c(
-    "Ridge",
-    "Lasso",
-    paste0("Elastic Net (alpha = ", best_alpha, ")")
+    "ReLU Ridge",
+    "ReLU Lasso",
+    paste0("ReLU Elastic Net (alpha = ", best_relu_enet_alpha, ")")
   ),
   
   Lambda_min = c(
     ridge_relu_lambda_min,
     lasso_relu_lambda_min,
-    enet_relu_cv[[best_idx]]$lambda.min
+    enet_relu_cv[[best_relu_enet_idx]]$lambda.min
   ),
   
   CV_MSE_min = c(
     min(ridge_relu_cv$cvm),
     min(lasso_relu_cv$cvm),
-    enet_cv_error[best_idx]
+    enet_cv_error[best_relu_enet_idx]
   ),
   
   Active_Vars_min = c(
     ridge_min_active,
     lasso_min_active,
-    enet_min_active[best_idx]
+    enet_min_active[best_relu_enet_idx]
   ),
   
   Lambda_1se = c(
     ridge_relu_lambda_1se,
     lasso_relu_lambda_1se,
-    enet_relu_cv[[best_idx]]$lambda.1se
+    enet_relu_cv[[best_relu_enet_idx]]$lambda.1se
   ),
   
   Active_Vars_1se = c(
     ridge_1se_active,
     lasso_1se_active,
-    enet_1se_active[best_idx]
+    enet_1se_active[best_relu_enet_idx]
   )
 )
 
 knitr::kable(
   relu_summary,
   digits = 4,
-  col.names = c("Model", "Lambda (min)", "MSE (min)", "Active Features (min)", "Lambda (1se)", "Active Features (1se)"),
+  col.names = c("ReLU Model", "Lambda (min)", "MSE (min)", "Active Features (min)", "Lambda (1se)", "Active Features (1se)"),
   caption = "Table: Performance of Regularized Models using fixed ReLU features."
 )
 
 ```
 
-Table 4C summarizes ridge, lasso, and elastic net (alpha = `r best_alpha`, selected from Table 4B.2) fitted on the 199 retained ReLU hidden features. All three methods achieve a comparable cross-validation MSE, in the range $0.6084$–$0.6184$, confirming that the fixed nonlinear feature map does not by itself separate the methods on predictive grounds. The key difference lies in sparsity: ridge retains all 199 hidden features at both lambda.min and lambda.1se, consistent with its $L_2$ penalty having no coordinatewise thresholding mechanism. Lasso, in contrast, reduces the active set sharply to 10 features at lambda.min and just 6 at lambda.1se, while elastic net falls in between at 45 and 41 active features, reflecting its mixed $L_1$/$L_2$ penalty at alpha = `r best_alpha`.
+Table 4C summarizes ridge, lasso, and elastic net (alpha = `r best_relu_enet_alpha`, selected from Table 4B.2) fitted on the 199 retained ReLU hidden features. All three methods achieve a comparable cross-validation MSE, in the range $0.6084$–$0.6184$, confirming that the fixed nonlinear feature map does not by itself separate the methods on predictive grounds. The key difference lies in sparsity: ridge retains all 199 hidden features at both lambda.min and lambda.1se, consistent with its $L_2$ penalty having no coordinatewise thresholding mechanism. Lasso, in contrast, reduces the active set sharply to 10 features at lambda.min and just 6 at lambda.1se, while elastic net falls in between at 45 and 41 active features, reflecting its mixed $L_1$/$L_2$ penalty at alpha = `r best_relu_enet_alpha`.
 
 Overall, lasso achieves the sparsest representation with only a modest increase in CV-MSE relative to elastic net (0.6184 vs. 0.6084), while ridge attains a similar error (0.6128) using the full hidden-feature set. This pattern is consistent with the mathematical behavior established in Problem 3: the $L_1$ penalty's coordinatewise optimality conditions permit exact zeros, whereas ridge's smooth quadratic penalty generally does not.
 
 ## 4D. Locked declaration and final holdout evaluation
 
-> **Locked before viewing `y_test`:** [preprocessing, candidate specifications, selected tuning values, feature seed, nominated deployment model, metrics]
+- Preprocessing: A 80/20 train-test split using predefined seed. All predictos and ReLU hidden features was standardized using training statistics only. Hidden features with zero variances were removed.
+
+- Candidate models: OSL, Ridge, Lasso, Elastic Net and their corresponding fixed-ReLU-feature variants.
+
+- Tuning Values: We decided to use $\lambda_{min}$ (and $\alpha$ for Elastic Net) for each regularized model selected by 5-fold cross-validation on training data.
+
+- Feature seed: $`r seeds$feature`$
+
+- Nominated model deployment:
+```{r models-sum, echo=FALSE}
+best_orig_enet_idx <- which.min(elastic_summary$cv_mse_min)
+best_orig_enet_alpha <- elastic_summary$alpha[best_orig_enet_idx]
+best_orig_enet_cv_mse <- elastic_summary$cv_mse_min[best_orig_enet_idx]
+
+models_summary <- data.frame(
+  Model = c(
+    "OLS (Original)",
+    "Ridge (Original)",
+    "Lasso (Original)",
+    paste0("Elastic Net (Original, alpha = ", best_orig_enet_alpha, ")"),
+    "Ridge (ReLU)",
+    "Lasso (ReLU)",
+    paste0("Elastic Net (ReLU, alpha = ", best_relu_enet_alpha, ")")
+  ),
+  CV_MSE = c(
+    ols_cv_mse,
+    min(ridge$cvm),
+    min(lasso_cv$cvm),
+    best_orig_enet_cv_mse,
+    min(ridge_relu_cv$cvm),
+    min(lasso_relu_cv$cvm),
+    enet_cv_error[best_relu_enet_idx]
+  )
+)
+
+
+knitr::kable(
+  models_summary,
+  digits = 4,
+  caption = "Cross-Validation MSE Comparison for Model Nomination"
+)
+
+```
+The Lasso regression was chosen as the optimal model because it yielded the minimum cross-validation MSE during the training phase.
+ 
+- Metrics: Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE)
 
 ```{r final-holdout-evaluation}
-# This must be the first analysis chunk that uses y_test for evaluation.
-# Generate all fixed candidate predictions and one RMSE/MAE table here.
+pred_ols <- predict(ols_fit, newdata = data.frame(x_test))
+pred_ridge <- as.numeric(predict(ridge, newx = x_test, s = "lambda.min"))
+pred_lasso <- as.numeric(predict(lasso_cv, newx = x_test, s = "lambda.min"))
+
+best_orig_enet_model <- elastic_fits[[paste0("alpha_", best_orig_enet_alpha)]]
+pred_enet <- as.numeric(predict(best_orig_enet_model, newx = x_test, s = "lambda.min"))
+
+pred_relu_ridge <- as.numeric(predict(ridge_relu_cv, newx = H_test, s = "lambda.min"))
+pred_relu_lasso <- as.numeric(predict(lasso_relu_cv, newx = H_test, s = "lambda.min"))
+
+best_relu_enet_model <- enet_relu_cv[[best_relu_enet_idx]]
+pred_relu_enet <- as.numeric(predict(best_relu_enet_model, newx = H_test, s = "lambda.min"))
+
+test_metrics <- data.frame(
+  Model = c(
+    "OLS",
+    "Ridge",
+    "Lasso",
+    paste0("Elastic Net (alpha = ", best_orig_enet_alpha, ")"),
+    "ReLU Ridge",
+    "ReLU Lasso",
+    paste0("ReLU Elastic Net (alpha = ", best_relu_enet_alpha, ")")
+  ),
+  rbind(
+    score_regression(y_test, pred_ols),
+    score_regression(y_test, pred_ridge),
+    score_regression(y_test, pred_lasso),
+    score_regression(y_test, pred_enet),
+    score_regression(y_test, pred_relu_ridge),
+    score_regression(y_test, pred_relu_lasso),
+    score_regression(y_test, pred_relu_enet)
+  )
+)
+
+knitr::kable(
+  test_metrics,
+  digits = 4,
+  caption = "Final Holdout Evaluation (Test Set RMSE and MAE)"
+)
 ```
 
-*State whether the holdout evidence supports the predeclared choice. Do not retune.*
+The holdout evaluation yields an unexpected but highly insightful result: the evidence does not strictly support our pre-declared choice in terms of absolute predictive accuracy on the test set. 
+
+1. The surprising baseline superiority:
+
+The unpenalized **OLS model** achieved the lowest test RMSE ($0.6713$) and MAE ($0.5736$), outperforming all regularized models. Our nominated deployment model, the **Elastic Net ($\alpha = 0.9$)**, yielded a higher test RMSE of $0.7152$. This discrepancy between cross-validation and holdout performance is typical for small datasets (the test set contains only ~19 observations). A single influential test point can easily skew the RMSE. Despite losing strictly on accuracy, we do not retune. The Elastic Net remains our final model because its variable selection property (retaining only 5 features) provides clinical interpretability that the dense OLS model lacks.
+
+2. Original Features vs. ReLU Features:
+
+The holdout metrics decisively demonstrate that the original linear features uniformly outperform the fixed random ReLU features across all regularization penalties. The best ReLU model (Elastic Net $\alpha = 0.1$) only achieved an RMSE of $0.7465$, while the ReLU Lasso performed the worst overall (RMSE $0.8009$). 
+
+This confirms that for this specific clinical dataset, mapping the 8 predictors into a 200-dimensional nonlinear space overcomplicated the problem, introducing noise rather than extracting meaningful predictive patterns. The biological relationship between prostate measurements and PSA levels is adequately-and optimally-captured by simple linear assumptions.
 
 ## 4E. Deep-learning connection and limitations
 
