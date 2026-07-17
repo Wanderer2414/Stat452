@@ -48,11 +48,16 @@ We confirm that every group member can explain the submitted analysis. AI use is
 
 # Abstract {-}
 
-*Maximum 150 words: prediction problem, methods, main evidence, and recommendation.*
+This study aims to predict pre-operative log prostate-specific antigen (`lpsa`) from clinical measurements, comparing models on prediction error, coefficient stability, and interpretability under multicollinearity. We evaluated OLS, Ridge, Lasso, and Elastic Net regressions using five-fold cross-validation on original linear predictors and fixed random ReLU features. Cross-validation initially favored Lasso (CV-MSE = 0.5790) for its sparse selection of five variables. However, holdout evaluation revealed that the OLS model achieved the lowest test RMSE (0.6713) and MAE (0.5736). Furthermore, original linear features consistently outperformed the nonlinear ReLU representations across all models. Despite the OLS superiority in pure holdout accuracy, we recommend the lasso-dominant elastic net ($\alpha = 0.9$) for clinical deployment, as it provides a parsimonious, highly interpretable model that isolates key biological drivers of PSA with only a modest trade-off in error.
 
+<!-- list of model: -->
+<!-- - OLS : Outperforms on test set , but dense and complex model (retains all 8 predictors).  -->
+<!-- - Ridge (Original): Solves multicollinearity (reduces condition number from 20.6 to 8.9) and stabilizes coefficient signs, but lacks feature selection (still keeps 8 predictors) and has higher test error than OLS. -->
+<!-- - Lasso / Elastic Net ($\alpha = 0.9$): Best training performance (lowest CV-MSE). Highly interpretable and parsimonious model (retains only 5 core biological predictors). -->
+<!-- - Fixed ReLU Models: Worst holdout performance across all penalties. -->
 # Reproducible setup {-}
 
-```{r setup}
+```{r setup, warning=FALSE, message = FALSE}
 required_packages <- c("tidyverse", "glmnet", "broom", "knitr", "car")
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
@@ -382,9 +387,6 @@ y_test <- y_raw[test_id]
 
 
 foldid <- make_foldid(nrow(x_train), k = 5L, seed = seeds$cv)
-sum(is.na(analysis_data))
-
-save(x_train, y_train, x_test, y_test, analysis_data, train_id, test_id, foldid, file = "data/tmpData.RData")
 ```
 
 To ensure a fair comparison among OLS, ridge, lasso, and elastic net, all preprocessing and model development steps were performed using only the training data. The holdout test set was reserved exclusively for the final evaluation and was not used during model fitting, model selection, or hyperparameter tuning.
@@ -593,7 +595,7 @@ Categorical Patterns: Variables such as svi (binary) and gleason (ordinal) displ
 Weak Trends: age and lbph exhibit highly dispersed data clouds with very flat regression lines, indicating weak independent linear relationships with the target.
 
 
-#### Question
+### Question
 
 Given the varying individual predictive strengths of these features and the moderate structural correlations (e.g., between pgg45 and lcp), will an $L_{1}$ penalty (Lasso) completely eliminate the structurally weaker predictors like age to produce a strictly sparse model, or will an $L_{2}$ penalty (Ridge) prove more stable against the identified high-leverage anomaly in lweight?
 
