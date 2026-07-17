@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.7.15)  17 JUL 2026 14:44
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex 2026.7.15)  17 JUL 2026 15:02
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -967,11 +967,14 @@ Underfull \hbox (badness 10000) in paragraph at lines 1100--1108
 [][]
  []
 
-[20] [21]
+[20]
+Missing character: There is no 𝜆 (U+1D706) in font [lmroman10-regular]:mapping=tex-text;!
+Missing character: There is no 𝜆 (U+1D706) in font [lmroman10-regular]:mapping=tex-text;!
+[21]
 File: Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/unnamed-chunk-7-1.pdf Graphic file (type pdf)
 <use Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/unnamed-chunk-7-1.pdf>
 
-Underfull \hbox (badness 10000) in paragraph at lines 1184--1202
+Underfull \hbox (badness 10000) in paragraph at lines 1192--1210
 [][]
  []
 
@@ -982,47 +985,47 @@ File: Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/lasso-p
 File: Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/lasso-coef-path-1.pdf Graphic file (type pdf)
 <use Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/lasso-coef-path-1.pdf>
 [25]
-Overfull \hbox (9.08943pt too wide) in paragraph at lines 1379--1380
+Overfull \hbox (9.08943pt too wide) in paragraph at lines 1391--1392
  []\TU/lmr/m/n/10.95 num_non_zero
  []
 
 [26]
-Overfull \hbox (24.23997pt too wide) in paragraph at lines 1525--1525
+Overfull \hbox (24.23997pt too wide) in paragraph at lines 1537--1537
 []|\TU/lmr/m/n/10.95 (Intercept)|  
  []
 
 
-Overfull \hbox (6.56668pt too wide) in paragraph at lines 1527--1527
+Overfull \hbox (6.56668pt too wide) in paragraph at lines 1539--1539
 []|\TU/lmr/m/n/10.95 lweight|  
  []
 
 
-Overfull \hbox (7.23463pt too wide) in paragraph at lines 1532--1532
+Overfull \hbox (7.23463pt too wide) in paragraph at lines 1544--1544
 []|\TU/lmr/m/n/10.95 gleason|  
  []
 
 
-Overfull \hbox (26.63802pt too wide) in paragraph at lines 1534--1534
+Overfull \hbox (26.63802pt too wide) in paragraph at lines 1546--1546
 []|\TU/lmr/m/n/10.95 lcavol_new|  
  []
 
 [27]
-Overfull \hbox (24.23997pt too wide) in paragraph at lines 1582--1582
+Overfull \hbox (24.23997pt too wide) in paragraph at lines 1594--1594
 []|\TU/lmr/m/n/10.95 (Intercept)|  
  []
 
 
-Overfull \hbox (6.56668pt too wide) in paragraph at lines 1584--1584
+Overfull \hbox (6.56668pt too wide) in paragraph at lines 1596--1596
 []|\TU/lmr/m/n/10.95 lweight|  
  []
 
 
-Overfull \hbox (7.23463pt too wide) in paragraph at lines 1589--1589
+Overfull \hbox (7.23463pt too wide) in paragraph at lines 1601--1601
 []|\TU/lmr/m/n/10.95 gleason|  
  []
 
 
-Overfull \hbox (26.63802pt too wide) in paragraph at lines 1591--1591
+Overfull \hbox (26.63802pt too wide) in paragraph at lines 1603--1603
 []|\TU/lmr/m/n/10.95 lcavol_new|  
  []
 
@@ -1030,47 +1033,47 @@ Overfull \hbox (26.63802pt too wide) in paragraph at lines 1591--1591
 Missing character: There is no λ (U+03BB) in font [lmroman10-regular]:mapping=tex-text;!
 [34]
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(1)/m/n' will be
-(Font)              scaled to size 12.0pt on input line 1989.
+(Font)              scaled to size 12.0pt on input line 2009.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(1)/m/n' will be
-(Font)              scaled to size 8.0pt on input line 1989.
+(Font)              scaled to size 8.0pt on input line 2009.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(2)/m/n' will be
-(Font)              scaled to size 12.0011pt on input line 1989.
+(Font)              scaled to size 12.0011pt on input line 2009.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(2)/m/n' will be
-(Font)              scaled to size 8.00073pt on input line 1989.
+(Font)              scaled to size 8.00073pt on input line 2009.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
-(Font)              scaled to size 11.99872pt on input line 1989.
+(Font)              scaled to size 11.99872pt on input line 2009.
 LaTeX Font Info:    Font shape `TU/latinmodern-math.otf(3)/m/n' will be
-(Font)              scaled to size 7.99915pt on input line 1989.
+(Font)              scaled to size 7.99915pt on input line 2009.
 [35] [36]
 File: Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/ori-enet-plot-1.pdf Graphic file (type pdf)
 <use Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/ori-enet-plot-1.pdf>
 
-Overfull \hbox (2.64946pt too wide) in paragraph at lines 2128--2129
+Overfull \hbox (2.64946pt too wide) in paragraph at lines 2148--2149
  []\TU/lmr/m/n/10.95 lambda_min
  []
 
 
-Overfull \hbox (4.51096pt too wide) in paragraph at lines 2132--2133
+Overfull \hbox (4.51096pt too wide) in paragraph at lines 2152--2153
  []\TU/lmr/m/n/10.95 cv_mse_min
  []
 
 
-Overfull \hbox (0.90842pt too wide) in paragraph at lines 2134--2135
+Overfull \hbox (0.90842pt too wide) in paragraph at lines 2154--2155
  []\TU/lmr/m/n/10.95 cv_mse_1se
  []
 
 
-Overfull \hbox (2.64946pt too wide) in paragraph at lines 2146--2147
+Overfull \hbox (2.64946pt too wide) in paragraph at lines 2166--2167
  []\TU/lmr/m/n/10.95 lambda_min
  []
 
 
-Overfull \hbox (4.51096pt too wide) in paragraph at lines 2150--2151
+Overfull \hbox (4.51096pt too wide) in paragraph at lines 2170--2171
  []\TU/lmr/m/n/10.95 cv_mse_min
  []
 
 
-Overfull \hbox (0.90842pt too wide) in paragraph at lines 2152--2153
+Overfull \hbox (0.90842pt too wide) in paragraph at lines 2172--2173
  []\TU/lmr/m/n/10.95 cv_mse_1se
  []
 
@@ -1078,18 +1081,18 @@ Overfull \hbox (0.90842pt too wide) in paragraph at lines 2152--2153
 File: Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/elastic-coef-path-1.pdf Graphic file (type pdf)
 <use Group04_ProjectQuiz1_files/Group04_ProjectQuiz1_files/figure-latex/elastic-coef-path-1.pdf>
 [38] [39] [40] [41] [42]
-Overfull \hbox (5.51707pt too wide) in paragraph at lines 2433--2434
+Overfull \hbox (5.51707pt too wide) in paragraph at lines 2453--2454
  []\TU/lmr/m/n/10.95 Alpha
  []
 
 
-Overfull \hbox (5.51707pt too wide) in paragraph at lines 2451--2452
+Overfull \hbox (5.51707pt too wide) in paragraph at lines 2471--2472
  []\TU/lmr/m/n/10.95 Alpha
  []
 
 [43] [44] [45]
 
-LaTeX Warning: Citation `ref-loshchilov2019' on page 46 undefined on input line 2740.
+LaTeX Warning: Citation `ref-loshchilov2019' on page 46 undefined on input line 2760.
 
 [46] [47] [48] [49] [50] [51] (./Group04_ProjectQuiz1.aux)
  ***********
@@ -1101,10 +1104,10 @@ LaTeX Warning: There were undefined references.
 
  ) 
 Here is how much of TeX's memory you used:
- 19160 strings out of 469837
- 362249 string characters out of 5468785
- 941205 words of memory out of 5000000
- 47830 multiletter control sequences out of 15000+600000
+ 19167 strings out of 469837
+ 362320 string characters out of 5468785
+ 941468 words of memory out of 5000000
+ 47837 multiletter control sequences out of 15000+600000
  636162 words of font info for 113 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  90i,11n,114p,1019b,674s stack positions out of 10000i,1000n,20000p,200000b,200000s

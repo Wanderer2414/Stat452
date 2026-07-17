@@ -919,31 +919,54 @@ The mean cross-validation MSE decreases as $-Log(\lambda)$ increases (equivalent
 ### Lambda min:
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 
-cat("Lambda min: ",ridge$lambda_min, "\n")
-cat("MSE: ", ridge$mse_min, "\n")
-cat("Condition number:", ridge$cond_min , "\n")
+results <- data.frame(
+  Metric = c("Lambda min", "MSE", "Condition number"),
+  Value = c(
+    ridge$lambda_min,
+    ridge$mse_min,
+    ridge$cond_min
+  )
+)
+
+kable(
+  results,
+  digits = 4
+)
 
 ```
-With $\lambda_{min} \approx 0.23$, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} \approx 0.61$, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
+With $\lambda_{min} = $`r ridge$lambda_min`, the 5-fold cross-validation MSE reaches its minimum value of $MSE_{min} = $`r ridge$mse_min``, indicating the best predictive performance among the candidate values of $\lambda$. However, the corresponding Ridge model still has a relatively large condition number, suggesting that the model remains sensitive to multicollinearity and may not be sufficiently stable.
 
 ### Lambda 1se:
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 
-cat("Lambda 1se: ",ridge$lambda_1se, "\n")
-cat("MSE: ", ridge$mse_1se, "\n")
-cat("Condition number:", ridge$cond_1se, "\n")
+
+results <- data.frame(
+  Metric = c("Lambda 1se", "MSE", "Condition number"),
+  Value = c(
+    ridge$lambda_1se,
+    ridge$mse_1se,
+    ridge$cond_1se
+  )
+)
+
+kable(
+  results,
+  digits = 4
+)
 
 ```
-Although the one-standard-error rule selected a larger penalty $\lambda_{1se} \approx 1.02$, the condition number decreased only slightly from 20.2 to 19.07, indicating minimal improvement in numerical stability. In contrast, the cross-validation MSE increased from 0.61 to 0.66. Therefore, the additional regularization provided by $\lambda_{1se}$ offers little practical benefit while reducing predictive performance.
+Although the one-standard-error rule selected a larger penalty $\lambda_{1se} = $`r ridge$lambda_1se`, the condition number decreased strongly from `r ridge$cond_min` to `r ridge$cond_1se`. In contrast, the cross-validation MSE increased from `r ridge$mse_min` to `r ridge$mse_1se`. 
 
 ### Coefficients:
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 
-data.frame(
-  OLS = as.numeric(coef(ols_fit)),
-  Lambda_Min = as.numeric(ridge$coef_min),
-  Lambda_Max = as.numeric(ridge$coef_1se),
-  row.names = names(ols_fit$coefficients)
+knitr::kable(
+  data.frame(
+    OLS = as.numeric(coef(ols_fit)),
+    Lambda_Min = as.numeric(ridge$coef_min),
+    Lambda_Max = as.numeric(ridge$coef_1se),
+    row.names = names(ols_fit$coefficients)
+  )
 )
 ```
 
@@ -994,9 +1017,19 @@ Based on the 5-fold cross-validation curve generated for the Lasso regression mo
 
 ```{r lasso-min, echo=FALSE, warning=FALSE, message=FALSE}
 
-cat("Lambda min: ", lasso_cv$lambda_min, "\n")
-cat("MSE: ", lasso_cv$mse_min, "\n")
-cat("Condition number:", lasso_cv$cond_min, "\n")
+results <- data.frame(
+  Metric = c("Lambda min", "MSE", "Condition number"),
+  Value = c(
+    lasso_cv$lambda_min,
+    lasso_cv$mse_min,
+    lasso_cv$cond_min
+  )
+)
+
+kable(
+  results,
+  digits = 4
+)
 ```
 The optimal tuning parameter selected by five-fold cross-validation is $\lambda_{\text{min}} \approx 0.0891$. This value strictly minimizes the cross-validation Mean Squared Error (CV-MSE) to 0.5790, providing the best predictive performance among all candidate penalty values. Furthermore, the condition number at this optimal threshold evaluates to 13.5119, indicating improved numerical stability compared to the unpenalized baseline.
 
@@ -1011,9 +1044,19 @@ Overall, $\lambda_{\text{min}}$ produces the model with the lowest cross-validat
 
 ```{r lasso-1se, echo=FALSE, warning=FALSE, message=FALSE}
 
-cat("Lambda 1se: ", lasso_cv$lambda_1se, "\n")
-cat("MSE: ", lasso_cv$mse_1se, "\n")
-cat("Condition number:", lasso_cv$cond_1se, "\n")
+results <- data.frame(
+  Metric = c("Lambda 1se", "MSE", "Condition number"),
+  Value = c(
+    lasso_cv$lambda_1se,
+    lasso_cv$mse_1se,
+    lasso_cv$cond_1se
+  )
+)
+
+kable(
+  results,
+  digits = 4
+)
 ```
 The one-standard-error rule selects $\lambda_{\text{1se}} \approx 0.1875$, which applies a stronger regularization penalty than $\lambda_{\text{min}}$. The corresponding five-fold cross-validation Mean Squared Error (CV-MSE) is 0.6218. Although this error is slightly higher than the minimum achieved by $\lambda_{\text{min}}$, it remains within one standard error of that minimum. Furthermore, the stronger penalty reduces the condition number to 9.9406, indicating greater numerical stability.
 
@@ -1437,6 +1480,7 @@ b_j-z_j
 $$
 The solution is obtained by considering three cases.
 #### Case 1. Positive coefficient
+
 Suppose
 $$
 b_j>0.
@@ -1459,6 +1503,7 @@ z_j>\lambda.
 $$
 
 #### Case 2. Negative coefficient
+
 Suppose
 $$
 b_j<0.
@@ -1481,6 +1526,7 @@ z_j<-\lambda.
 $$
 
 #### Case 3. Zero coefficient
+
 Suppose
 $$
 b_j=0.
@@ -1501,6 +1547,7 @@ b_j=0.
 $$
 This explains why lasso can produce exact zero coefficients.
 ### Step 3. Soft-Thresholding Solution
+
 Combining the three cases,
 $$
 \hat b_j=
@@ -1526,6 +1573,7 @@ $$
 This expression is known as the **soft-thresholding operator**.
 
 ### Interpretation
+
 The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
 $$
 |z_j|\le\lambda,
@@ -1540,6 +1588,7 @@ $$
 but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
 
 ### Interpretation
+
 The soft-thresholding operator subtracts the penalty \(\lambda\) from the magnitude of every coefficient. When
 $$
 |z_j|\le\lambda,
@@ -1552,7 +1601,9 @@ $$
 (G+\lambda I)^{-1}z,
 $$
 but almost never makes them exactly zero. Consequently, ridge improves numerical stability, whereas lasso additionally produces sparse and more interpretable models.
+
 ## 3C. Connect algebra to evidence
+
 Section 3A showed that ridge regression improves the conditioning of the Gram matrix by adding a positive constant \(\lambda\) to every eigenvalue. Consequently, the theoretical condition number changes from
 $$
 \kappa_2(G)
