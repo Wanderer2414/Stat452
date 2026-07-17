@@ -227,10 +227,9 @@ if (!all(vapply(analysis_data, is.numeric, logical(1)))) {
 @stamey1989, which examined the relationship between prostate-specific antigen
 (PSA) levels and several clinical and histological measurements in men with
 clinically localized prostate cancer who underwent radical prostatectomy. The
-dataset contains `r nrow(data_raw)` observations and `r ncol(data_raw)` variables
---- one continuous response (`lpsa`) and `r length(predictors)` candidate
-predictors covering tumour characteristics, patient demographics, and biopsy
-summaries.
+dataset contains `r nrow(data_raw)` observations and `r ncol(data_raw)` variables -
+one continuous response (`lpsa`) and `r length(predictors)` candidate predictors
+covering tumour characteristics, patient demographics, and biopsy summaries.
 
 **Response.** `lpsa` is the natural logarithm of prostate-specific antigen
 (ng/mL), a continuous serum marker measured before surgery. It is modelled on
@@ -285,7 +284,7 @@ summaries), and none uses PSA information in its definition.
 inside the design matrix. Its least-squares coefficient would absorb nearly all
 explained variance, the training and cross-validation errors of every method
 would collapse toward zero, and the resulting model would fail on any new patient
-whose PSA is not yet known --- which is precisely the deployment situation. The
+whose PSA is not yet known - which is precisely the deployment situation. The
 comparison itself would also become meaningless: OLS, ridge, and lasso would all
 be fitting the same leaked signal, so differences between them would reflect how
 each penalty shrinks that one dominant column rather than how each method handles
@@ -339,7 +338,7 @@ n_duplicate_rows <- sum(duplicated(analysis_data))
 Every column is numeric, so the type guard above passes and the design matrix
 needs no factor encoding. No cell is missing (`Missing` is zero throughout), so
 no imputation is performed; the contingency rule was nevertheless fixed in
-advance --- median imputation with medians computed on the training rows only ---
+advance - median imputation with medians computed on the training rows only -
 because a rule invented after seeing the data would be a decision taken with
 holdout information. And
 `r n_duplicate_rows` rows are duplicated, so no patient is silently counted
@@ -608,17 +607,10 @@ kable(
 )
 ```
 
-**How to read this table.** Each row is one model term. `estimate` is a
-*standardized* slope: because every predictor was centred and scaled in 1B, it is
-the change in `lpsa` for a one standard-deviation increase in that predictor with
-the others held fixed, so the magnitudes are directly comparable down the column
-and the intercept equals the mean `lpsa` of the training set. The last three
-columns judge each estimate --- `std.error` is its standard error, `statistic` is
-the *t*-ratio (`estimate / std.error`), and `p.value` tests the null that the
-coefficient is zero, so a small value flags a predictor whose effect stands out
-from noise. Watch for any slope whose sign opposes the predictor's raw
-correlation with `lpsa`: that is an early fingerprint of the collinearity
-discussed below.
+All estimates sit on the standardized scale fixed in 1B, so their magnitudes are
+directly comparable across rows and the intercept is the training mean of `lpsa`.
+A slope whose sign contradicts the predictor's marginal correlation with `lpsa`
+is the first symptom of collinearity, examined below.
 
 ```{r ols-metrics}
 # In-sample fit quality
@@ -666,42 +658,12 @@ kable(
 )
 ```
 
-**How to read this table.** The first two rows measure in-sample fit:
-`R-squared` is the fraction of training variance in `lpsa` the model explains,
-and `Adjusted R-squared` discounts it for the `r ncol(x_train)` predictors so
-that adding an uninformative one cannot inflate the score. The lower rows are prediction error
-on the scale of `lpsa`: RMSE penalizes large misses (it is the square root of
-MSE), while MAE is the mean absolute error and is less sensitive to outliers.
-Training and five-fold CV error are listed together so they can be read side by
-side --- the training figures are optimistic because the model was scored on the
-same rows it was fitted on, and the cross-validation note below explains how the
-CV figure is built and what the gap between the two means. The last row is the
-standard error of the CV-MSE across the five folds: it measures how precisely the
-CV error itself is pinned down, and `cv.glmnet` reports the same quantity
-(`cvsd`) for ridge and lasso, so 2D can compare all three methods with their
-error bars rather than by bare point estimates.
-
-```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4}
-# Residual / influence diagnostic: Cook's distance
-cooks_d   <- cooks.distance(ols_fit)
-n_train   <- nrow(train_data)
-threshold <- 4 / n_train
-
-# Flagged points are labelled by their ORIGINAL row in prostate.csv (via train_id)
-# so a flagged patient can be traced back to the raw data.
-flagged_pos <- which(cooks_d > threshold)
-flagged_row <- train_id[flagged_pos]
-
-plot(cooks_d,
-     type = "h", lwd = 1.5, col = "steelblue",
-     ylab = "Cook's distance", xlab = "Observation index",
-     main = "Cook's Distance - OLS Baseline")
-abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
-if (length(flagged_pos)) {
-  text(flagged_pos, cooks_d[flagged_pos],
-       labels = flagged_row, pos = 3, cex = 0.8, col = "firebrick")
-}
-```
+The table gathers the in-sample fit and the five-fold cross-validation error on
+the shared folds. The training rows are optimistic because the model was scored
+on the same patients it was fitted on, whereas the CV rows estimate error on
+unseen patients. The final row - the standard error of the CV-MSE across folds -
+is the quantity `cv.glmnet` reports as `cvsd` for ridge and lasso, so 2D can
+compare all three methods with error bars rather than bare point estimates.
 
 ```{r ols-helpers, echo=FALSE}
 # Helper functions to extract coefficient and p-value by term name
@@ -716,16 +678,6 @@ cor_lcavol_lcp <- cor(x_train[, "lcavol"], x_train[, "lcp"])
 ols_vif      <- car::vif(ols_fit)
 max_vif      <- max(ols_vif)
 max_vif_term <- names(which.max(ols_vif))
-
-# Locate the most influential patient, and the heavy-prostate anomaly 1C flagged,
-# both reported by their original prostate.csv row number.
-n_flagged   <- length(flagged_pos)
-top_pos     <- flagged_pos[which.max(cooks_d[flagged_pos])]
-top_row     <- train_id[top_pos]
-lweight_pos <- which.max(train_df$lweight)   # the log-weight outlier seen in 1C
-lweight_row <- train_id[lweight_pos]
-lweight_g   <- exp(train_df$lweight[lweight_pos])
-lweight_is_flagged <- lweight_pos %in% flagged_pos
 
 # Identify non-significant predictors (p > 0.05, excluding intercept)
 nonsig_terms <- ols_coefs %>%
@@ -769,7 +721,7 @@ against which ridge and lasso are judged in 2B--2C.
 ($\hat{\beta} \approx `r round(ols_beta("lcp"), 2)`$) deserves comment:
 biologically, greater capsular penetration should go with higher PSA, and its
 marginal correlation with `lpsa` is indeed positive. The collinearity behind the
-flip is *moderate rather than severe* --- the largest variance inflation factor
+flip is *moderate rather than severe* - the largest variance inflation factor
 is `r round(max_vif, 2)` (`r max_vif_term`) and `lcp`'s own is
 `r round(ols_vif[["lcp"]], 2)`, both comfortably below the conventional threshold
 of 5, consistent with the VIF table reported in 1C. Moderate sharing is still
@@ -781,6 +733,56 @@ has absorbed the shared variance what remains for `lcp` is close to noise
 move. Following the brief, this evidence is reported rather than removed; ridge
 and lasso in 2B--2C are expected to stabilize exactly these shared-variance
 coefficients.
+
+```{r ols-qq, fig.cap="Normal Q-Q plot of the OLS standardized residuals against the 45-degree reference line. Points lie on the line when the errors are normal; the three largest departures are labelled with their row number in the original prostate.csv.", fig.height=4}
+# Residual diagnostic: the t-tests behind the p-values above assume roughly
+# normal errors, so the assumption is checked rather than taken on trust.
+# rstandard() divides each residual by its own standard error, which removes the
+# effect of leverage and puts every point on a common N(0, 1) scale.
+ols_std_resid <- rstandard(ols_fit)
+
+qq <- qqnorm(ols_std_resid, plot.it = FALSE)
+plot(qq$x, qq$y, type = "n",
+     main = "Normal Q-Q — OLS standardized residuals",
+     xlab = "Theoretical quantiles", ylab = "Standardized residuals")
+grid(col = "grey88", lty = 1, lwd = 0.6)
+
+# The residuals are already standardized to the N(0, 1) scale, so the honest
+# reference is the 45-degree line y = x. qqline() would instead fit a line
+# through the sample quartiles, and with n = 77 that fit is itself noisy.
+abline(0, 1, col = "firebrick", lwd = 1.5, lty = 2)
+points(qq$x, qq$y, pch = 19, col = "steelblue", cex = 0.8)
+
+# Label the three worst departures by their original prostate.csv row, flipping
+# the side so the text stays inside the panel at both ends.
+worst_resid <- order(abs(ols_std_resid), decreasing = TRUE)[1:3]
+text(qq$x[worst_resid], qq$y[worst_resid], labels = train_id[worst_resid],
+     pos = ifelse(qq$x[worst_resid] > 0, 2, 4), cex = 0.75, col = "firebrick")
+
+shapiro_ols    <- shapiro.test(ols_std_resid)
+big_resid_rows <- train_id[which(abs(ols_std_resid) > 2)]
+max_qq_gap     <- max(abs(qq$y - qq$x))
+```
+
+**Residual normality.** The p-values quoted above are $t$-tests, and on only
+`r nrow(x_train)` training rows they lean on the errors being approximately
+normal, so the assumption is checked rather than taken on trust. Each point in
+the Q-Q plot is one patient: its standardized residual against the value a
+normal sample of this size would be expected to produce at that rank. The points
+sit on the 45-degree line almost throughout - no residual departs from it by
+more than `r round(max_qq_gap, 2)` standard deviations - and a Shapiro--Wilk
+test agrees ($W = `r round(shapiro_ols$statistic, 3)`$,
+$p = `r round(shapiro_ols$p.value, 2)`$), nowhere near evidence against
+normality. `r length(big_resid_rows)` residuals fall beyond two standard
+deviations (original rows `r paste(big_resid_rows, collapse = ", ")`) against
+roughly `r round(0.05 * nrow(x_train))` expected by chance in a sample this size:
+a mild excess, not a violation, and the mild wander visible in the tails is what
+`r nrow(x_train)` draws from a genuinely normal distribution routinely look like.
+
+Two consequences follow. The coefficient p-values in the table above can be read
+at face value rather than treated as approximations, and because the residual
+spread is symmetric with no heavy tail, RMSE is a fair summary of the error
+rather than a number dragged around by a few extreme misses.
 
 **Cross-validation error.** The five-fold CV RMSE
 (`r round(ols_cv_rmse, 3)`) is computed using the same `foldid` assignment that
@@ -804,6 +806,48 @@ roughly one standard error are not distinguishable on this evidence, and 2D must
 weigh the ridge and lasso results against that yardstick rather than declare a
 winner on a bare point estimate.
 
+
+
+```{r ols-diagnostic, fig.cap="Cook's distance for the OLS fit. Bars above the dashed 4/n threshold are flagged as influential; each flagged bar is labelled with its row number in the original prostate.csv, not its training position.", fig.height=4}
+# Residual / influence diagnostic: Cook's distance
+cooks_d   <- cooks.distance(ols_fit)
+n_train   <- nrow(train_data)
+threshold <- 4 / n_train
+
+# Flagged points are labelled by their ORIGINAL row in prostate.csv (via train_id)
+# so a flagged patient can be traced back to the raw data.
+flagged_pos <- which(cooks_d > threshold)
+flagged_row <- train_id[flagged_pos]
+
+# Headroom above the tallest bar, otherwise its label is clipped off the panel.
+plot(cooks_d,
+     type = "h", lwd = 1.5, col = "steelblue",
+     ylim = c(0, max(cooks_d) * 1.30),
+     ylab = "Cook's distance", xlab = "Training observation index",
+     main = "Cook's Distance — OLS Baseline")
+abline(h = threshold, lty = 2, col = "firebrick", lwd = 1.5)
+if (length(flagged_pos)) {
+  # Labels are rotated: adjacent flagged bars would otherwise overprint each other.
+  text(flagged_pos, cooks_d[flagged_pos] + max(cooks_d) * 0.03,
+       labels = flagged_row, srt = 90, adj = 0,
+       cex = 0.45, col = "firebrick", xpd = TRUE)
+}
+
+# Locate the most influential patient, and the heavy-prostate anomaly 1C flagged,
+# both reported by their original prostate.csv row number.
+n_flagged   <- length(flagged_pos)
+top_pos     <- flagged_pos[which.max(cooks_d[flagged_pos])]
+top_row     <- train_id[top_pos]
+lweight_pos <- which.max(train_df$lweight)   # the log-weight outlier seen in 1C
+lweight_row <- train_id[lweight_pos]
+lweight_g   <- exp(train_df$lweight[lweight_pos])
+lweight_is_flagged <- lweight_pos %in% flagged_pos
+
+# Leverage separates the two ingredients Cook's distance mixes together.
+ols_leverage <- hatvalues(ols_fit)
+avg_leverage <- length(coef(ols_fit)) / n_train
+```
+
 **Influence diagnostic.** Cook's distance asks how far the whole fitted
 coefficient vector would move if one patient were deleted, so it combines a large
 residual and high leverage into a single number. Against the conventional
@@ -812,16 +856,27 @@ threshold $4/n \approx `r round(threshold, 3)`$, `r n_flagged` of the
 row `r top_row` (Cook's $D \approx `r round(max(cooks_d), 2)`$).
 
 This connects the exploratory work in 1C to the fit. The heavy-prostate anomaly
-singled out there --- original row `r lweight_row`, whose prostate weight of
+singled out there - original row `r lweight_row`, whose prostate weight of
 `r round(lweight_g)` g (log `r round(train_df$lweight[lweight_pos], 2)`) is far
 above every other patient while its `lpsa` is only
-`r round(train_df$lpsa[lweight_pos], 2)` --- is
+`r round(train_df$lpsa[lweight_pos], 2)` - is
 `r if (lweight_is_flagged) "indeed among the flagged points" else "not flagged"`,
 with Cook's $D \approx `r round(cooks_d[lweight_pos], 2)`$. The oddity spotted in
 the plots therefore measurably moves the unpenalized fit rather than being merely
-cosmetic. In a sample of only `r nrow(x_train)` rows, such points bend
-coefficients easily --- especially for the collinear pair `lcavol`/`lcp`, whose
-estimates are already fragile.
+cosmetic.
+
+The Q-Q plot lets us say *why* it moves the fit, because Cook's distance mixes
+two ingredients that the residual check separates. This patient's standardized
+residual is only `r round(ols_std_resid[lweight_pos], 2)`, comfortably inside the
+normal range - the model predicts him well. What makes him influential is
+leverage of `r round(ols_leverage[lweight_pos], 2)`,
+`r round(ols_leverage[lweight_pos] / avg_leverage, 1)` times the average of
+`r round(avg_leverage, 2)` and the largest in the training set: he is extreme in
+predictor space, not badly predicted. Every other flagged row is the mirror image -
+an unremarkable position but a residual beyond two standard deviations. In a
+sample of only `r nrow(x_train)` rows, both kinds of point bend coefficients
+easily, especially for the collinear pair `lcavol`/`lcp` whose estimates are
+already fragile.
 
 All flagged observations are retained rather than removed: they are clinically
 valid patients, and the brief requires the evidence to be explained rather than
