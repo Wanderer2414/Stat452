@@ -2259,7 +2259,23 @@ Section 4C is a linear read-out on a *fixed* random feature map: the hidden weig
 
 ## 5B. Recommendation and limitations
 
-*Give the final recommendation, distinguish prediction from interpretation, and state limitations.*
+### Final Recommendation
+
+Despite the OLS superiority in pure holdout accuracy, we recommend the lasso-dominant elastic net ($\alpha = 0.9$) for final clinical deployment. 
+
+Prediction vs. Interpretation:
+
+- When strictly prioritizing prediction accuracy on this specific split, the OLS model is technically superior, achieving the lowest test RMSE (0.6713) and MAE (0.5736). However, OLS retains all eight candidate predictors leading to the complex model and OLS remains highly vulnerable to multicollinearity,  such as assigning a counterintuitive negative coefficient to `lcp`. 
+
+- In contrast, prioritizing interpretation leads us to the elastic net model. It isolates the five most critical biological drivers of PSA levels (`lcavol`, `lweight`, `lbph`, `svi`, and `pgg45`) while shrinking noisy predictors to exactly zero (similar to Lasso). In a medical context, the interpretability, sparsity, and mathematical stability of this parsimonious model provide a much more practical diagnostic tool, easily justifying the modest trade-off in predictive error.
+
+### Limitations
+
+1. Small Sample Size: The dataset contains only 97 observations in total, leaving roughly 20 patients in the holdout test set. This limited test sample makes the final evaluation highly sensitive to individual outliers, meaning the superior RMSE of the OLS model could partially result from test-set variance rather than true generalization ability.
+
+2. Restricted Generalizability: The study population exclusively represents men with clinically localized prostate cancer who underwent radical prostatectomy. The models and their estimated coefficients therefore cannot be generalized to unscreened men in the general population.
+
+3. Feature Space Complexity: As demonstrated in the nonlinear transformation experiment, projecting the clinical predictors into a high-dimensional space using fixed ReLU features overcomplicated the modeling task, introduced noise, and degraded holdout performance. This indicates that for this specific clinical dataset, simple linear assumptions are adequate, and complex neural-network-like architectures are unnecessary.
 
 ## 5C. AI verification record
 
